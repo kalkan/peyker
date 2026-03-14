@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D NORAD Uydu Takipçisi</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.139/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <h1>3D NORAD Uydu Takipçisi</h1>
+      <p class="subtitle">NORAD ID gir, uydunun 3B konumunu ve yörüngesini gör.</p>
+
+      <div class="form-group">
+        <label for="noradId">NORAD ID</label>
+        <div class="row">
+          <input id="noradId" type="number" placeholder="Örn: 25544" value="25544" />
+          <button id="loadBtn">Yükle</button>
+        </div>
+      </div>
+
+      <div class="quick-buttons">
+        <button class="quick" data-id="25544">ISS</button>
+        <button class="quick" data-id="48274">İMECE</button>
+        <button class="quick" data-id="39084">Göktürk-2</button>
+        <button class="quick" data-id="28654">Göktürk-1A?*</button>
+      </div>
+      <p class="note">* Hızlı seçimler zamanla değişebilir; istediğin güncel NORAD ID’yi elle de girebilirsin.</p>
+
+      <div class="form-group">
+        <label>
+          <input id="followToggle" type="checkbox" checked />
+          Kamerayı uyduya kilitle
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input id="orbitToggle" type="checkbox" checked />
+          Yörünge çizgisini göster
+        </label>
+      </div>
+
+      <div class="info-card">
+        <h2>Uydu Bilgisi</h2>
+        <div id="status">Hazır.</div>
+        <table>
+          <tbody>
+            <tr><td>Ad</td><td id="satName">-</td></tr>
+            <tr><td>NORAD</td><td id="satNorad">-</td></tr>
+            <tr><td>Enlem</td><td id="satLat">-</td></tr>
+            <tr><td>Boylam</td><td id="satLon">-</td></tr>
+            <tr><td>Yükseklik</td><td id="satAlt">-</td></tr>
+            <tr><td>Hız</td><td id="satSpeed">-</td></tr>
+            <tr><td>Epoch</td><td id="satEpoch">-</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="help-card">
+        <h2>Notlar</h2>
+        <ul>
+          <li>Veri kaynağı: CelesTrak TLE servisi</li>
+          <li>Yörünge hesabı: satellite.js (SGP4)</li>
+          <li>3B küre: CesiumJS</li>
+          <li>Bu sürüm statik hosting ile çalışır</li>
+        </ul>
+      </div>
+    </aside>
+
+    <main>
+      <div id="cesiumContainer"></div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.139/Build/Cesium/Cesium.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/satellite.js@6.0.1/dist/satellite.min.js"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
