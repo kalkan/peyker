@@ -3,6 +3,7 @@
  * Orchestrates all modules: map, satellite data, UI, and export.
  */
 
+import 'leaflet/dist/leaflet.css';
 import './styles/main.css';
 import { initMap, getMap } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
@@ -18,10 +19,11 @@ import { buildSidebar, updateSidebar, updateSatListAndInfo, setStatus } from './
 
 import L from 'leaflet';
 
-// Fix Leaflet default marker icon path issue with bundlers
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+// Fix Leaflet default marker icon path issue with Vite bundler.
+// Vite resolves these imports to hashed asset URLs in the dist build.
+import markerIcon from 'leaflet/dist/images/marker-icon.png?url';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png?url';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png?url';
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
@@ -442,4 +444,22 @@ function showToast(message, type = 'info') {
 }
 
 // ===== Start =====
-document.addEventListener('DOMContentLoaded', init);
+// Module scripts are deferred, so DOM is ready by the time they execute.
+// Use both approaches for safety, wrapped with error logging.
+function safeInit() {
+  try {
+    init();
+  } catch (err) {
+    console.error('Satellite Ground Track Planner init error:', err);
+    document.body.innerHTML = `<div style="color:#f85149;padding:2rem;font-family:sans-serif;">
+      <h2>Initialization Error</h2>
+      <pre>${err.message}\n${err.stack}</pre>
+    </div>`;
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', safeInit);
+} else {
+  safeInit();
+}

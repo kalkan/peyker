@@ -7,6 +7,6 @@ export default defineConfig({
     assetsDir: 'assets',
   },
   server: {
-    open: true,
+    open: false,
   },
 });

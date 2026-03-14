@@ -72,6 +72,9 @@ export function initMap() {
     }
   });
 
+  // Ensure map renders correctly after layout settles
+  setTimeout(() => map.invalidateSize(), 100);
+
   return map;
 }
 
