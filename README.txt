@@ -1,25 +1,43 @@
-3D NORAD Uydu Takipçisi
+Uydu Takip Platformu (2B + 3B)
+==============================
 
-Dosyalar:
+Bu sürümde:
+- 2B işlevsel arayüz (Leaflet tabanlı)
+- 3B canlı takip arayüzü (CesiumJS tabanlı)
+- NORAD ID ile uydu yükleme
+- Hızlı seçim: İMECE ve Göktürk-2
+- 2B tahmin takvimi ile gelecekteki ground track çizimi
+- 2B KML dışa aktarma (canlı iz ve tahmin izi)
+- 3B kamera kontrol butonları
+
+Dosyalar
+--------
 - index.html
 - styles.css
 - main.js
 
-Yerel çalıştırma:
-1. Klasörü VS Code ile aç.
-2. Live Server eklentisi kur.
-3. index.html dosyasına sağ tık -> Open with Live Server.
+Yerelde Çalıştırma
+------------------
+1. ZIP'i aç.
+2. Klasörü VS Code ile aç.
+3. Live Server eklentisini kur.
+4. index.html dosyasını Live Server ile aç.
 
-GitHub Pages yükleme:
-1. GitHub'da yeni bir public repo oluştur. Örnek: norad-3d-tracker
-2. Bu klasördeki tüm dosyaları repo içine yükle.
-3. Repo ayarları > Pages > Build and deployment > Source = Deploy from a branch
-4. Branch = main, Folder = /(root)
-5. Save de.
-6. Birkaç dakika sonra site şu biçimde açılır:
-   https://KULLANICI_ADIN.github.io/norad-3d-tracker/
+GitHub Pages'a Yükleme
+----------------------
+1. GitHub'da yeni bir public repo oluştur.
+2. index.html, styles.css ve main.js dosyalarını repo köküne yükle.
+3. Repo içinde Settings > Pages menüsüne git.
+4. Source olarak "Deploy from a branch" seç.
+5. Branch olarak "main", folder olarak "/ (root)" seç.
+6. Save butonuna bas.
+7. Birkaç dakika sonra site şu adreste yayınlanır:
+   https://KULLANICI_ADIN.github.io/REPO_ADI/
 
-Önemli:
-- Kullanıcı 'Google Pages' dediyse pratikte çoğu zaman kastedilen servis GitHub Pages oluyor.
-- Bu proje statik olduğu için GitHub Pages için uygundur.
-- NORAD TLE verisi CelesTrak üzerinden çekilir.
+Notlar
+------
+- TLE verisi CelesTrak servisinden alınır.
+- 2B harita OpenStreetMap + Leaflet ile çalışır.
+- 3B görünüm CesiumJS kullanır.
+- Yörünge hesabı satellite.js ile yapılır.
+- Proje tamamen statik hosting uyumludur; backend gerektirmez.

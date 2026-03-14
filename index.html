@@ -3,81 +3,171 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D NORAD Uydu Takipçisi</title>
+  <title>Uydu Takip Platformu | 2B + 3B</title>
 
   <link href="https://cdn.jsdelivr.net/npm/cesium@1.139/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div id="app">
     <aside class="sidebar">
-      <h1>3D NORAD Uydu Takipçisi</h1>
-      <p class="subtitle">NORAD ID gir, uydunun 3B konumunu ve yörüngesini gör.</p>
+      <h1>Uydu Takip Platformu</h1>
+      <p class="subtitle">2B işlevsel takip + 3B canlı izleme. NORAD ID gir, uyduyu seç, gelecek yörüngeleri çiz ve KML indir.</p>
 
-      <div class="form-group">
-        <label for="noradId">NORAD ID</label>
-        <div class="row">
-          <input id="noradId" type="number" placeholder="Örn: 25544" value="25544" />
-          <button id="loadBtn">Yükle</button>
+      <div class="tabs" role="tablist" aria-label="Görünüm sekmeleri">
+        <button class="tab-btn active" data-tab="2d">2B Arayüz</button>
+        <button class="tab-btn" data-tab="3d">3B Arayüz</button>
+      </div>
+
+      <section class="panel active" data-panel="2d">
+        <div class="form-group">
+          <label for="noradId2d">NORAD ID</label>
+          <div class="row">
+            <input id="noradId2d" type="number" placeholder="Örn: 48274" value="48274" />
+            <button id="loadBtn2d">Yükle</button>
+          </div>
         </div>
-      </div>
 
-      <div class="quick-buttons">
-        <button class="quick" data-id="25544">ISS</button>
-        <button class="quick" data-id="48274">İMECE</button>
-        <button class="quick" data-id="39084">Göktürk-2</button>
-        <button class="quick" data-id="28654">Göktürk-1A?*</button>
-      </div>
-      <p class="note">* Hızlı seçimler zamanla değişebilir; istediğin güncel NORAD ID’yi elle de girebilirsin.</p>
+        <div class="quick-buttons two-only">
+          <button class="quick quick-2d" data-id="48274">İMECE</button>
+          <button class="quick quick-2d" data-id="39084">Göktürk-2</button>
+        </div>
 
-      <div class="form-group">
-        <label>
-          <input id="followToggle" type="checkbox" checked />
-          Kamerayı uyduya kilitle
-        </label>
-      </div>
+        <div class="info-card compact">
+          <h2>2B Takip Kontrolleri</h2>
+          <div class="inline-toggles">
+            <label><input id="showCurrentTrack2d" type="checkbox" checked /> Mevcut iz</label>
+            <label><input id="showFutureTrack2d" type="checkbox" checked /> Tahmin izi</label>
+          </div>
+          <div class="inline-toggles">
+            <label><input id="autoCenter2d" type="checkbox" checked /> Uyduya ortala</label>
+          </div>
+        </div>
 
-      <div class="form-group">
-        <label>
-          <input id="orbitToggle" type="checkbox" checked />
-          Yörünge çizgisini göster
-        </label>
-      </div>
+        <div class="info-card">
+          <h2>Tahmin Takvimi</h2>
+          <div class="field-stack">
+            <label for="forecastStart">Başlangıç zamanı</label>
+            <input id="forecastStart" type="datetime-local" />
+          </div>
+          <div class="row row-3">
+            <div class="field-stack">
+              <label for="forecastHours">Süre (saat)</label>
+              <input id="forecastHours" type="number" min="1" max="72" value="24" />
+            </div>
+            <div class="field-stack">
+              <label for="forecastStep">Adım (dk)</label>
+              <input id="forecastStep" type="number" min="1" max="60" value="5" />
+            </div>
+            <div class="field-stack field-stack-end">
+              <button id="drawForecastBtn" class="secondary">Tahmini Çiz</button>
+            </div>
+          </div>
+          <div class="action-grid">
+            <button id="tomorrowBtn" class="secondary">+1 Gün</button>
+            <button id="nowBtn" class="secondary">Şimdi</button>
+            <button id="clearForecastBtn" class="secondary ghost">Tahmini Temizle</button>
+          </div>
+          <p class="note">Seçtiğin tarih/saatten itibaren ground track hesaplanır. Örn. yarın nereden geçeceğini görmek için +1 Gün kullan.</p>
+        </div>
 
-      <div class="info-card">
-        <h2>Uydu Bilgisi</h2>
-        <div id="status">Hazır.</div>
-        <table>
-          <tbody>
-            <tr><td>Ad</td><td id="satName">-</td></tr>
-            <tr><td>NORAD</td><td id="satNorad">-</td></tr>
-            <tr><td>Enlem</td><td id="satLat">-</td></tr>
-            <tr><td>Boylam</td><td id="satLon">-</td></tr>
-            <tr><td>Yükseklik</td><td id="satAlt">-</td></tr>
-            <tr><td>Hız</td><td id="satSpeed">-</td></tr>
-            <tr><td>Epoch</td><td id="satEpoch">-</td></tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="info-card">
+          <h2>KML Dışa Aktarma</h2>
+          <div class="action-grid">
+            <button id="exportCurrentKmlBtn" class="secondary">Canlı İz KML</button>
+            <button id="exportForecastKmlBtn" class="secondary">Tahmin KML</button>
+          </div>
+          <p class="note">KML dosyası nokta ve çizgi katmanlarıyla indirilir.</p>
+        </div>
 
-      <div class="help-card">
-        <h2>Notlar</h2>
-        <ul>
-          <li>Veri kaynağı: CelesTrak TLE servisi</li>
-          <li>Yörünge hesabı: satellite.js (SGP4)</li>
-          <li>3B küre: CesiumJS</li>
-          <li>Bu sürüm statik hosting ile çalışır</li>
-        </ul>
-      </div>
+        <div class="info-card">
+          <h2>Uydu Bilgisi</h2>
+          <div id="status2d">Hazır.</div>
+          <table>
+            <tbody>
+              <tr><td>Ad</td><td id="satName2d">-</td></tr>
+              <tr><td>NORAD</td><td id="satNorad2d">-</td></tr>
+              <tr><td>Enlem</td><td id="satLat2d">-</td></tr>
+              <tr><td>Boylam</td><td id="satLon2d">-</td></tr>
+              <tr><td>Yükseklik</td><td id="satAlt2d">-</td></tr>
+              <tr><td>Hız</td><td id="satSpeed2d">-</td></tr>
+              <tr><td>Epoch</td><td id="satEpoch2d">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="3d">
+        <div class="form-group">
+          <label for="noradId3d">NORAD ID</label>
+          <div class="row">
+            <input id="noradId3d" type="number" placeholder="Örn: 48274" value="48274" />
+            <button id="loadBtn3d">Yükle</button>
+          </div>
+        </div>
+
+        <div class="quick-buttons two-only">
+          <button class="quick quick-3d" data-id="48274">İMECE</button>
+          <button class="quick quick-3d" data-id="39084">Göktürk-2</button>
+        </div>
+
+        <div class="form-group inline-toggles">
+          <label><input id="followToggle3d" type="checkbox" checked /> Kamerayı uyduya kilitle</label>
+          <label><input id="orbitToggle3d" type="checkbox" checked /> Yörünge çizgisi</label>
+        </div>
+
+        <div class="info-card">
+          <h2>3B Kamera Kontrolleri</h2>
+          <div class="camera-grid">
+            <button id="camHomeBtn" class="secondary">Ana Görünüm</button>
+            <button id="camResetNorthBtn" class="secondary">Kuzey Yukarı</button>
+            <button id="camToSatelliteBtn" class="secondary">Uyduya Git</button>
+            <button id="camZoomInBtn" class="secondary">Yakınlaş +</button>
+            <button id="camZoomOutBtn" class="secondary">Uzaklaş −</button>
+            <button id="camTiltUpBtn" class="secondary">Eğimi Azalt</button>
+            <button id="camTiltDownBtn" class="secondary">Eğimi Artır</button>
+            <button id="camLeftBtn" class="secondary">Sola Dön</button>
+            <button id="camRightBtn" class="secondary">Sağa Dön</button>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h2>Uydu Bilgisi</h2>
+          <div id="status3d">Hazır.</div>
+          <table>
+            <tbody>
+              <tr><td>Ad</td><td id="satName3d">-</td></tr>
+              <tr><td>NORAD</td><td id="satNorad3d">-</td></tr>
+              <tr><td>Enlem</td><td id="satLat3d">-</td></tr>
+              <tr><td>Boylam</td><td id="satLon3d">-</td></tr>
+              <tr><td>Yükseklik</td><td id="satAlt3d">-</td></tr>
+              <tr><td>Hız</td><td id="satSpeed3d">-</td></tr>
+              <tr><td>Epoch</td><td id="satEpoch3d">-</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="help-card">
+          <h2>3B Not</h2>
+          <ul>
+            <li>3B görünüm canlı takip için optimize edildi.</li>
+            <li>Kamera butonları mouse kullanımını azaltır.</li>
+            <li>İşlevsel planlama için 2B arayüzü kullan.</li>
+          </ul>
+        </div>
+      </section>
     </aside>
 
-    <main>
-      <div id="cesiumContainer"></div>
+    <main class="viewer-stack">
+      <div id="map2d" class="viewer-panel active"></div>
+      <div id="cesiumContainer" class="viewer-panel"></div>
     </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/cesium@1.139/Build/Cesium/Cesium.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/satellite.js@6.0.1/dist/satellite.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script type="module" src="./main.js"></script>
 </body>
 </html>
