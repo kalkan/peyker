@@ -4,7 +4,7 @@
  */
 
 import { getState, findSatellite } from './state.js';
-import { getOrbitalElements } from '../sat/propagate.js';
+import { getOrbitalElements, propagateAt } from '../sat/propagate.js';
 
 /**
  * Render satellite info panel into the given container.
@@ -42,6 +42,12 @@ export function renderInfoPanel(container) {
   // Orbital elements derived from TLE
   if (sat.satrec) {
     const elems = getOrbitalElements(sat.satrec);
+
+    // Current altitude from live propagation
+    const pos = propagateAt(sat.satrec, new Date());
+    if (pos) {
+      addRow(grid, 'Altitude', `${pos.alt.toFixed(1)} km`, true);
+    }
 
     addRow(grid, 'Inclination', `${elems.inclination.toFixed(4)}°`, true);
     addRow(grid, 'Eccentricity', elems.eccentricity.toFixed(7), true);
