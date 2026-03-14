@@ -37,9 +37,13 @@ function hexToKmlColor(hex, alpha = 'cc') {
  * Generate coordinate string from track points.
  * KML format: lon,lat,alt (space separated).
  */
+/**
+ * Generate coordinate string from track points clamped to ground.
+ * KML format: lon,lat,0 (space separated).
+ */
 function coordsToKml(points) {
   return points
-    .map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)},${(p.alt * 1000).toFixed(0)}`)
+    .map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)},0`)
     .join(' ');
 }
 
@@ -66,7 +70,7 @@ function satFolder(sat) {
     parts.push(`        <styleUrl>#track_${sat.noradId}</styleUrl>`);
     parts.push(`        <LineString>`);
     parts.push(`          <tessellate>1</tessellate>`);
-    parts.push(`          <altitudeMode>absolute</altitudeMode>`);
+    parts.push(`          <altitudeMode>clampToGround</altitudeMode>`);
     parts.push(`          <coordinates>${coordsToKml(sat.trackPoints)}</coordinates>`);
     parts.push(`        </LineString>`);
     parts.push(`      </Placemark>`);
@@ -85,8 +89,8 @@ function satFolder(sat) {
     parts.push(`          </IconStyle>`);
     parts.push(`        </Style>`);
     parts.push(`        <Point>`);
-    parts.push(`          <altitudeMode>absolute</altitudeMode>`);
-    parts.push(`          <coordinates>${sat.currentPos.lon.toFixed(6)},${sat.currentPos.lat.toFixed(6)},${(sat.currentPos.alt * 1000).toFixed(0)}</coordinates>`);
+    parts.push(`          <altitudeMode>clampToGround</altitudeMode>`);
+    parts.push(`          <coordinates>${sat.currentPos.lon.toFixed(6)},${sat.currentPos.lat.toFixed(6)},0</coordinates>`);
     parts.push(`        </Point>`);
     parts.push(`      </Placemark>`);
   }
