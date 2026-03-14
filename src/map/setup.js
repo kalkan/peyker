@@ -3,6 +3,7 @@
  */
 
 import L from 'leaflet';
+import { GROUND_STATIONS } from '../sat/presets.js';
 
 let map = null;
 let baseLayers = {};
@@ -71,6 +72,29 @@ export function initMap() {
       coordsDisplay.textContent = '';
     }
   });
+
+  // Ground station markers
+  const gsGroup = L.layerGroup().addTo(map);
+  for (const gs of GROUND_STATIONS) {
+    const icon = L.divIcon({
+      className: 'gs-marker',
+      html: `<svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#e04040" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="14" cy="13" r="5" fill="none" stroke="#fff" stroke-width="1.5"/>
+        <line x1="14" y1="8" x2="14" y2="4" stroke="#fff" stroke-width="1.5"/>
+        <line x1="10" y1="10" x2="7" y2="7" stroke="#fff" stroke-width="1.2"/>
+        <line x1="18" y1="10" x2="21" y2="7" stroke="#fff" stroke-width="1.2"/>
+      </svg>`,
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+      popupAnchor: [0, -36],
+    });
+
+    L.marker([gs.lat, gs.lon], { icon })
+      .bindPopup(`<strong>${gs.name}</strong><br>${gs.lat.toFixed(5)}°, ${gs.lon.toFixed(5)}°`)
+      .addTo(gsGroup);
+  }
+  addOverlay('Ground Stations', gsGroup);
 
   // Ensure map renders correctly after layout settles
   setTimeout(() => map.invalidateSize(), 100);

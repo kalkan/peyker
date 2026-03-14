@@ -8,6 +8,13 @@ export const PRESETS = [
 ];
 
 /**
+ * Preset ground station markers.
+ */
+export const GROUND_STATIONS = [
+  { name: 'TÜBİTAK Uzay MİYEG Antenna', lat: 39.89136, lon: 32.77858 },
+];
+
+/**
  * Palette of distinct colors for satellite tracks.
  * Colors are chosen to be visible on both light and dark map backgrounds.
  */
