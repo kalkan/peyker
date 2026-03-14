@@ -15,8 +15,6 @@ const defaultState = {
   trackDuration: 24,    // hours
   liveEnabled: false,
   liveInterval: 5,      // seconds
-  swathEnabled: false,
-  swathRollAngle: 15,   // degrees
   nextColorIndex: 0,
 };
 
@@ -45,8 +43,6 @@ export function loadState() {
     if (parsed.propagationStep) state.propagationStep = parsed.propagationStep;
     if (parsed.trackDuration) state.trackDuration = parsed.trackDuration;
     if (parsed.liveInterval) state.liveInterval = parsed.liveInterval;
-    if (parsed.swathRollAngle) state.swathRollAngle = parsed.swathRollAngle;
-    if (typeof parsed.swathEnabled === 'boolean') state.swathEnabled = parsed.swathEnabled;
     if (typeof parsed.liveEnabled === 'boolean') state.liveEnabled = parsed.liveEnabled;
     if (typeof parsed.nextColorIndex === 'number') state.nextColorIndex = parsed.nextColorIndex;
 
@@ -82,8 +78,6 @@ function persistState() {
       propagationStep: state.propagationStep,
       trackDuration: state.trackDuration,
       liveInterval: state.liveInterval,
-      swathRollAngle: state.swathRollAngle,
-      swathEnabled: state.swathEnabled,
       liveEnabled: state.liveEnabled,
       nextColorIndex: state.nextColorIndex,
       satellites: state.satellites.map(s => ({

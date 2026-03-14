@@ -1,12 +1,12 @@
 /**
- * Layer group management for satellite tracks, markers, and swath polygons.
+ * Layer group management for satellite tracks and markers.
  * Each satellite gets its own set of layer groups.
  */
 
 import L from 'leaflet';
 import { getMap, addOverlay, removeOverlay } from './setup.js';
 
-// Map of noradId -> { track: LayerGroup, marker: LayerGroup, swath: LayerGroup }
+// Map of noradId -> { track: LayerGroup, marker: LayerGroup }
 const satLayers = new Map();
 
 /**
@@ -20,13 +20,11 @@ export function getOrCreateLayers(noradId, name) {
   const map = getMap();
   const trackGroup = L.layerGroup().addTo(map);
   const markerGroup = L.layerGroup().addTo(map);
-  const swathGroup = L.layerGroup().addTo(map);
 
   addOverlay(`${name} Track`, trackGroup);
   addOverlay(`${name} Position`, markerGroup);
-  addOverlay(`${name} Swath`, swathGroup);
 
-  const layers = { track: trackGroup, marker: markerGroup, swath: swathGroup, name };
+  const layers = { track: trackGroup, marker: markerGroup, name };
   satLayers.set(noradId, layers);
   return layers;
 }
@@ -39,7 +37,6 @@ export function clearSatLayers(noradId) {
   if (!layers) return;
   layers.track.clearLayers();
   layers.marker.clearLayers();
-  layers.swath.clearLayers();
 }
 
 /**
@@ -52,11 +49,9 @@ export function removeSatFromMap(noradId) {
   const map = getMap();
   if (map.hasLayer(layers.track)) map.removeLayer(layers.track);
   if (map.hasLayer(layers.marker)) map.removeLayer(layers.marker);
-  if (map.hasLayer(layers.swath)) map.removeLayer(layers.swath);
 
   removeOverlay(`${layers.name} Track`);
   removeOverlay(`${layers.name} Position`);
-  removeOverlay(`${layers.name} Swath`);
 
   satLayers.delete(noradId);
 }
@@ -71,7 +66,7 @@ export function clearAllLayers() {
 }
 
 /**
- * Get all layer entries (for export etc.).
+ * Get all layer entries.
  */
 export function getAllSatLayers() {
   return satLayers;

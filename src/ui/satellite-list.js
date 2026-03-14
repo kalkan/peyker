@@ -5,7 +5,7 @@
 
 import { getState, setState, updateSatellite } from './state.js';
 import { removeSatFromMap, clearSatLayers } from '../map/layers.js';
-import { removeLiveMarker, centerOnSat } from '../map/markers.js';
+import { removeLiveMarker, centerOnSat, updateLiveMarker } from '../map/markers.js';
 import { propagateAt } from '../sat/propagate.js';
 
 /**
@@ -43,7 +43,6 @@ export function renderSatList(container) {
       if (!vis.checked) {
         clearSatLayers(sat.noradId);
       }
-      // Re-render will be triggered by state change
     });
 
     // Name
@@ -70,15 +69,29 @@ export function renderSatList(container) {
       }
     });
 
-    // Live toggle
+    // Live toggle — capture current state before toggling
     const liveBtn = document.createElement('button');
     liveBtn.textContent = sat.showLive ? '◉' : '◎';
     liveBtn.title = sat.showLive ? 'Hide live position' : 'Show live position';
     liveBtn.style.color = sat.showLive ? '#3fb950' : '';
     liveBtn.addEventListener('click', () => {
-      updateSatellite(sat.noradId, { showLive: !sat.showLive });
-      if (sat.showLive) {
+      const wasLive = sat.showLive;
+      updateSatellite(sat.noradId, { showLive: !wasLive });
+
+      if (wasLive) {
+        // Was showing, now hiding — remove marker
         removeLiveMarker(sat.noradId);
+      } else {
+        // Was hidden, now showing — immediately show current position
+        if (sat.satrec) {
+          try {
+            const now = new Date();
+            const pos = propagateAt(sat.satrec, now);
+            if (pos) {
+              updateLiveMarker(sat.noradId, sat.name, pos.lat, pos.lon, pos.alt, sat.color, now);
+            }
+          } catch { /* skip */ }
+        }
       }
     });
 

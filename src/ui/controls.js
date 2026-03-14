@@ -6,7 +6,6 @@ import { getState, setState } from './state.js';
 
 /**
  * Render the date/track controls section.
- * Returns the container element.
  */
 export function renderDateControls(container, callbacks) {
   const state = getState();
@@ -85,7 +84,7 @@ export function renderLiveControls(container, callbacks) {
   });
   container.append(liveToggle);
 
-  // Auto-refresh toggle
+  // Auto-refresh interval
   const refreshRow = document.createElement('div');
   refreshRow.className = 'control-row';
   const refreshLabel = document.createElement('label');
@@ -110,42 +109,6 @@ export function renderLiveControls(container, callbacks) {
   tsDiv.id = 'live-timestamp';
   tsDiv.style.cssText = 'font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono);';
   container.append(tsDiv);
-}
-
-/**
- * Render swath/coverage controls.
- */
-export function renderSwathControls(container, callbacks) {
-  const state = getState();
-  container.innerHTML = '';
-
-  // Enable swath
-  const swathToggle = createToggleRow('Enable swath display', state.swathEnabled, (checked) => {
-    setState({ swathEnabled: checked });
-    callbacks.onSwathToggle(checked);
-  });
-  container.append(swathToggle);
-
-  // Roll angle
-  const rollRow = document.createElement('div');
-  rollRow.className = 'control-row';
-  const rollLabel = document.createElement('label');
-  rollLabel.textContent = 'Roll angle (°)';
-  const rollInput = document.createElement('input');
-  rollInput.type = 'number';
-  rollInput.min = '1';
-  rollInput.max = '60';
-  rollInput.step = '0.5';
-  rollInput.value = state.swathRollAngle;
-  rollInput.addEventListener('change', () => {
-    const val = parseFloat(rollInput.value);
-    if (val > 0 && val <= 60) {
-      setState({ swathRollAngle: val });
-      callbacks.onRollAngleChange(val);
-    }
-  });
-  rollRow.append(rollLabel, rollInput);
-  container.append(rollRow);
 }
 
 /**

@@ -10,7 +10,6 @@ import { renderInfoPanel } from './info-panel.js';
 import {
   renderDateControls,
   renderLiveControls,
-  renderSwathControls,
   renderExportControls,
 } from './controls.js';
 
@@ -19,15 +18,11 @@ let satListContainer = null;
 let infoContainer = null;
 let dateControlsContainer = null;
 let liveControlsContainer = null;
-let swathControlsContainer = null;
 let exportControlsContainer = null;
 let statusEl = null;
 
 /**
  * Build the sidebar DOM structure.
- *
- * @param {HTMLElement} sidebar - the sidebar element
- * @param {Object} callbacks - event callbacks from main
  */
 export function buildSidebar(sidebar, callbacks) {
   sidebar.innerHTML = '';
@@ -47,7 +42,6 @@ export function buildSidebar(sidebar, callbacks) {
 
   // 1. Satellite Input Section
   content.append(createSection('Satellite Input', (body) => {
-    // Input row
     const inputGroup = document.createElement('div');
     inputGroup.className = 'input-group';
 
@@ -88,7 +82,6 @@ export function buildSidebar(sidebar, callbacks) {
 
     body.append(quickGroup);
 
-    // Satellite list container
     satListContainer = document.createElement('div');
     body.append(satListContainer);
   }));
@@ -105,19 +98,13 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(liveControlsContainer);
   }));
 
-  // 4. Coverage / Swath
-  content.append(createSection('Coverage / Swath', (body) => {
-    swathControlsContainer = document.createElement('div');
-    body.append(swathControlsContainer);
-  }));
-
-  // 5. KML Export
+  // 4. KML Export
   content.append(createSection('KML Export', (body) => {
     exportControlsContainer = document.createElement('div');
     body.append(exportControlsContainer);
   }));
 
-  // 6. Satellite Info Panel
+  // 5. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -130,15 +117,6 @@ export function buildSidebar(sidebar, callbacks) {
   statusEl.className = 'status-bar';
   statusEl.textContent = 'Ready';
   sidebar.append(statusEl);
-
-  return {
-    satListContainer,
-    infoContainer,
-    dateControlsContainer,
-    liveControlsContainer,
-    swathControlsContainer,
-    exportControlsContainer,
-  };
 }
 
 /**
@@ -149,7 +127,6 @@ export function updateSidebar(callbacks) {
   if (infoContainer) renderInfoPanel(infoContainer);
   if (dateControlsContainer) renderDateControls(dateControlsContainer, callbacks);
   if (liveControlsContainer) renderLiveControls(liveControlsContainer, callbacks);
-  if (swathControlsContainer) renderSwathControls(swathControlsContainer, callbacks);
   if (exportControlsContainer) renderExportControls(exportControlsContainer, callbacks);
 }
 

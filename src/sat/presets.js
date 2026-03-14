@@ -3,7 +3,7 @@
  * Each preset has a display name and NORAD catalog number.
  */
 export const PRESETS = [
-  { name: 'İMECE', noradId: 58878 },
+  { name: 'İMECE', noradId: 56178 },
   { name: 'Göktürk-2', noradId: 39030 },
 ];
 
