@@ -29,6 +29,7 @@ export function renderInfoPanel(container) {
 
   addRow(grid, 'Name', sat.name);
   addRow(grid, 'NORAD ID', sat.noradId);
+  addLinkRow(grid, 'SATCAT', `https://www.satcat.com/sats/${sat.noradId}`, 'View on satcat.com');
 
   // Metadata fields (from SATCAT if available)
   if (sat.metadata) {
@@ -88,6 +89,23 @@ export function renderInfoPanel(container) {
     tleSection.append(toggle, content);
     container.append(tleSection);
   }
+}
+
+function addLinkRow(grid, label, url, text) {
+  const labelEl = document.createElement('span');
+  labelEl.className = 'label';
+  labelEl.textContent = label;
+
+  const valueEl = document.createElement('span');
+  valueEl.className = 'value';
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = text;
+  valueEl.append(link);
+
+  grid.append(labelEl, valueEl);
 }
 
 function addRow(grid, label, value, derived = false) {
