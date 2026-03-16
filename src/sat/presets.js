@@ -11,7 +11,7 @@ export const PRESETS = [
  * Preset ground station markers.
  */
 export const GROUND_STATIONS = [
-  { name: 'TÜBİTAK Uzay MİYEG Antenna', lat: 39.89136, lon: 32.77858 },
+  { name: 'TÜBİTAK Uzay MİYEG Antenna', lat: 39.8911, lon: 32.7787, alt: 925 },
 ];
 
 /**

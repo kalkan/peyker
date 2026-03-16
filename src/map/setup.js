@@ -91,7 +91,7 @@ export function initMap() {
     });
 
     L.marker([gs.lat, gs.lon], { icon })
-      .bindPopup(`<strong>${gs.name}</strong><br>${gs.lat.toFixed(5)}°, ${gs.lon.toFixed(5)}°`)
+      .bindPopup(`<strong>${gs.name}</strong><br>${gs.lat.toFixed(5)}°, ${gs.lon.toFixed(5)}°${gs.alt != null ? `<br>Altitude: ${gs.alt} m` : ''}`)
       .addTo(gsGroup);
   }
   addOverlay('Ground Stations', gsGroup);
