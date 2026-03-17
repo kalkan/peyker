@@ -202,6 +202,10 @@ html, body {
   font-size: 14px;
 }
 
+#right-panel .pass-big-countdown-value {
+  font-size: 36px;
+}
+
 #right-panel .pass-day-header {
   font-size: 12px;
 }
@@ -816,6 +820,56 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .next-pass-badge.past {
   color: var(--text-muted);
+}
+
+/* Big countdown timer */
+.pass-big-countdown {
+  text-align: center;
+  padding: 12px 0 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
+
+.pass-big-countdown-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.pass-big-countdown-value {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2px;
+  line-height: 1.1;
+}
+
+.pass-big-countdown.active .pass-big-countdown-value {
+  color: #3fb950;
+  animation: countdown-pulse 2s ease-in-out infinite;
+}
+
+.pass-big-countdown.active .pass-big-countdown-label {
+  color: #3fb950;
+}
+
+.pass-big-countdown.past .pass-big-countdown-value {
+  font-size: 16px;
+  color: var(--text-muted);
+  letter-spacing: 0;
+}
+
+.pass-big-countdown.past .pass-big-countdown-label {
+  color: var(--text-muted);
+}
+
+@keyframes countdown-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 /* Pass navigation bar */

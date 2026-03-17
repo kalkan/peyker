@@ -15,6 +15,9 @@ const CACHE_TTL = 60000; // 1 minute
 let viewedPassIndex = -1; // -1 means "auto: next upcoming"
 let viewedSatId = null;
 
+// Live countdown timer
+let countdownTimer = null;
+
 /**
  * Render the passes panel into the given container.
  */
@@ -186,16 +189,39 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
     labelClass = 'next-pass-badge';
   }
 
-  const countdown = (!isActive && !isPast) ? getCountdown(pass.aos.getTime() - now) : '';
   const elColorClass = isActive ? 'el-high' : (pass.maxEl >= 30 ? 'el-mid' : (pass.maxEl >= 10 ? 'el-low' : 'el-vlow'));
   const accentColor = isActive ? '#3fb950' : '#5daaff';
+
+  // Big countdown: time until AOS (future) or time remaining until LOS (active)
+  let bigCountdownHtml = '';
+  if (isActive) {
+    const remaining = pass.los.getTime() - now;
+    bigCountdownHtml = `
+      <div class="pass-big-countdown active">
+        <div class="pass-big-countdown-label">Geçiş bitimine kalan</div>
+        <div class="pass-big-countdown-value" data-target="${pass.los.getTime()}" data-mode="los">${formatCountdownBig(remaining)}</div>
+      </div>`;
+  } else if (!isPast) {
+    const remaining = pass.aos.getTime() - now;
+    bigCountdownHtml = `
+      <div class="pass-big-countdown">
+        <div class="pass-big-countdown-label">Geçişe kalan süre</div>
+        <div class="pass-big-countdown-value" data-target="${pass.aos.getTime()}" data-mode="aos">${formatCountdownBig(remaining)}</div>
+      </div>`;
+  } else {
+    bigCountdownHtml = `
+      <div class="pass-big-countdown past">
+        <div class="pass-big-countdown-label">Geçiş tamamlandı</div>
+        <div class="pass-big-countdown-value">${fmtDate(pass.aos)}</div>
+      </div>`;
+  }
 
   const arcSvg = buildArcSvg(pass, isActive, accentColor);
 
   card.innerHTML = `
+    ${bigCountdownHtml}
     <div class="next-pass-top">
       <div class="${labelClass}">${label}</div>
-      ${countdown ? `<div class="next-pass-countdown">${countdown}</div>` : ''}
     </div>
     ${arcSvg}
     <div class="next-pass-el-hero">
@@ -222,6 +248,23 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
   `;
 
   wrapper.append(card);
+
+  // Start live countdown ticker
+  if (countdownTimer) clearInterval(countdownTimer);
+  const cdEl = card.querySelector('.pass-big-countdown-value[data-target]');
+  if (cdEl) {
+    const target = parseInt(cdEl.dataset.target, 10);
+    countdownTimer = setInterval(() => {
+      const rem = target - Date.now();
+      if (rem <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        cdEl.textContent = '00:00:00';
+        return;
+      }
+      cdEl.textContent = formatCountdownBig(rem);
+    }, 1000);
+  }
 
   // Navigation bar
   const nav = document.createElement('div');
@@ -279,6 +322,18 @@ function highlightTableRow(container, idx, passes) {
     if (rowCount === idx) tr.classList.add('pass-row-next');
     rowCount++;
   });
+}
+
+function formatCountdownBig(ms) {
+  if (ms <= 0) return '00:00:00';
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  if (d > 0) return `${d}g ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 function buildArcSvg(pass, isActive, accentColor) {
