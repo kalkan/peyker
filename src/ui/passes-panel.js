@@ -24,8 +24,18 @@ export function renderPassesPanel(container) {
   }
 
   const sat = findSatellite(state.selectedSatId);
-  if (!sat || !sat.satrec || GROUND_STATIONS.length === 0) {
-    container.innerHTML = '<div class="empty-state">No TLE data available</div>';
+  if (!sat) {
+    container.innerHTML = '<div class="empty-state">Satellite not found</div>';
+    return;
+  }
+
+  if (!sat.satrec) {
+    container.innerHTML = '<div class="pass-loading">Loading TLE data...</div>';
+    return;
+  }
+
+  if (GROUND_STATIONS.length === 0) {
+    container.innerHTML = '<div class="empty-state">No ground station configured</div>';
     return;
   }
 
