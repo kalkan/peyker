@@ -14,7 +14,7 @@ import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian } from 
 import { getColor } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe } from './ui/state.js';
-import { buildSidebar, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
+import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
 
 import L from 'leaflet';
 
@@ -38,6 +38,9 @@ function init() {
 
   const sidebar = document.getElementById('sidebar');
   buildSidebar(sidebar, getCallbacks());
+
+  const rightPanel = document.getElementById('right-panel');
+  buildRightPanel(rightPanel);
 
   subscribe(() => {
     updateSatListAndInfo();

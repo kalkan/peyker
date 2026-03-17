@@ -116,19 +116,7 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(gsControlsContainer);
   }));
 
-  // 6. Upcoming Passes
-  content.append(createSection('Upcoming Passes', (body) => {
-    passesContainer = document.createElement('div');
-    body.append(passesContainer);
-  }));
-
-  // 7. Pass Overlap Analysis
-  content.append(createSection('Pass Overlap Analysis', (body) => {
-    overlapContainer = document.createElement('div');
-    body.append(overlapContainer);
-  }));
-
-  // 8. Satellite Info Panel
+  // 6. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -141,6 +129,40 @@ export function buildSidebar(sidebar, callbacks) {
   statusEl.className = 'status-bar';
   statusEl.textContent = 'Ready';
   sidebar.append(statusEl);
+}
+
+/**
+ * Build the right panel DOM structure (passes & overlap analysis).
+ */
+export function buildRightPanel(panel) {
+  panel.innerHTML = '';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'sidebar-header';
+  header.innerHTML = `
+    <h1>Pass Analysis</h1>
+    <div class="subtitle">Ground station visibility &amp; overlap</div>
+  `;
+  panel.append(header);
+
+  // Scrollable content
+  const content = document.createElement('div');
+  content.className = 'sidebar-content';
+
+  // 1. Upcoming Passes
+  content.append(createSection('Upcoming Passes', (body) => {
+    passesContainer = document.createElement('div');
+    body.append(passesContainer);
+  }));
+
+  // 2. Pass Overlap Analysis
+  content.append(createSection('Pass Overlap Analysis', (body) => {
+    overlapContainer = document.createElement('div');
+    body.append(overlapContainer);
+  }));
+
+  panel.append(content);
 }
 
 /**

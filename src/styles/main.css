@@ -28,6 +28,7 @@
   --radius-sm: 10px;
   --radius-xs: 6px;
   --sidebar-width: 380px;
+  --right-panel-width: 360px;
   --blur: 28px;
   --blur-heavy: 40px;
   --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -102,6 +103,63 @@ html, body {
 
 #sidebar::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ===== Right Panel — Pass Analysis ===== */
+#right-panel {
+  width: var(--right-panel-width);
+  min-width: var(--right-panel-width);
+  height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(30, 45, 75, 0.25) 0%, rgba(15, 20, 35, 0.45) 50%, rgba(10, 14, 22, 0.55) 100%),
+    var(--bg-glass);
+  backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--blur-heavy)) saturate(1.6);
+  border-left: 1px solid var(--border-glass);
+  box-shadow:
+    -1px 0 0 rgba(255, 255, 255, 0.02),
+    -4px 0 24px rgba(0, 0, 0, 0.2);
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 130, 180, 0.2) transparent;
+}
+
+#right-panel::-webkit-scrollbar {
+  width: 5px;
+}
+
+#right-panel::-webkit-scrollbar-thumb {
+  background: rgba(100, 130, 180, 0.2);
+  border-radius: 3px;
+}
+
+#right-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 130, 180, 0.35);
+}
+
+#right-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#right-panel .sidebar-header {
+  padding: 18px 18px 14px;
+}
+
+#right-panel .sidebar-header h1 {
+  font-size: 14px;
+}
+
+#right-panel .sidebar-section {
+  padding: 14px 18px;
+}
+
+#right-panel .sidebar-content {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* ===== Map ===== */
@@ -1016,6 +1074,10 @@ input[type="number"]::-webkit-outer-spin-button {
 
   #map-container {
     height: 55vh;
+  }
+
+  #right-panel {
+    display: none;
   }
 
   :root {
