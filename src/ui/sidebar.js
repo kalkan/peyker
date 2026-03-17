@@ -8,6 +8,7 @@ import { getState, setState } from './state.js';
 import { renderSatList } from './satellite-list.js';
 import { renderInfoPanel } from './info-panel.js';
 import { renderPassesPanel } from './passes-panel.js';
+import { renderOverlapPanel } from './overlap-panel.js';
 import {
   renderDateControls,
   renderLiveControls,
@@ -23,6 +24,7 @@ let liveControlsContainer = null;
 let exportControlsContainer = null;
 let gsControlsContainer = null;
 let passesContainer = null;
+let overlapContainer = null;
 let statusEl = null;
 
 /**
@@ -120,7 +122,13 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(passesContainer);
   }));
 
-  // 7. Satellite Info Panel
+  // 7. Pass Overlap Analysis
+  content.append(createSection('Pass Overlap Analysis', (body) => {
+    overlapContainer = document.createElement('div');
+    body.append(overlapContainer);
+  }));
+
+  // 8. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -146,6 +154,7 @@ export function updateSidebar(callbacks) {
   if (exportControlsContainer) renderExportControls(exportControlsContainer, callbacks);
   if (gsControlsContainer) renderGroundStationControls(gsControlsContainer, callbacks);
   if (passesContainer) renderPassesPanel(passesContainer);
+  if (overlapContainer) renderOverlapPanel(overlapContainer);
 }
 
 /**
@@ -155,6 +164,7 @@ export function updateSatListAndInfo() {
   if (satListContainer) renderSatList(satListContainer);
   if (infoContainer) renderInfoPanel(infoContainer);
   if (passesContainer) renderPassesPanel(passesContainer);
+  if (overlapContainer) renderOverlapPanel(overlapContainer);
 }
 
 /**

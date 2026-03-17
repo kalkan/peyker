@@ -714,6 +714,85 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   margin-top: 4px;
 }
 
+/* ===== Pass Overlap Analysis ===== */
+.overlap-summary {
+  margin-bottom: 8px;
+}
+
+.overlap-sat-list {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.overlap-card {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.overlap-card.overlap-past {
+  opacity: 0.4;
+  border-left-color: var(--text-muted);
+}
+
+.overlap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.overlap-sats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.overlap-chip {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.overlap-x {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.overlap-dur {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(93, 170, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.overlap-times {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.overlap-details {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ===== Status Bar ===== */
 .status-bar {
   padding: 8px 14px;
