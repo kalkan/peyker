@@ -175,23 +175,31 @@ html, body {
 }
 
 #right-panel .next-pass-badge {
-  font-size: 11px;
-}
-
-#right-panel .next-pass-row {
   font-size: 13px;
 }
 
+#right-panel .next-pass-el-value {
+  font-size: 32px;
+}
+
+#right-panel .next-pass-el-label {
+  font-size: 13px;
+}
+
+#right-panel .next-pass-row {
+  font-size: 15px;
+}
+
 #right-panel .next-pass-label {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 #right-panel .next-pass-date {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 #right-panel .next-pass-countdown {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 #right-panel .pass-day-header {
@@ -707,60 +715,103 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: var(--bg-glass);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.next-pass-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
 }
 
 .next-pass-badge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   color: var(--accent);
-  margin-bottom: 6px;
 }
 
 .next-pass-badge.active {
   color: #3fb950;
 }
 
+.next-pass-arc {
+  width: 100%;
+  height: 60px;
+  display: block;
+  margin: 4px 0 6px;
+}
+
+.next-pass-el-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.next-pass-el-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.next-pass-el-value.el-high { color: #3fb950; }
+.next-pass-el-value.el-mid { color: #f0883e; }
+.next-pass-el-value.el-low { color: #d29922; }
+.next-pass-el-value.el-vlow { color: var(--text-muted); }
+
+.next-pass-el-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .next-pass-times {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
 }
 
 .next-pass-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .next-pass-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
-  width: 28px;
+  width: 30px;
   flex-shrink: 0;
 }
 
 .next-pass-value {
   color: var(--text-primary);
+  font-weight: 500;
 }
 
 .next-pass-date {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   margin-left: auto;
 }
 
 .next-pass-countdown {
-  margin-top: 6px;
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--accent);
   font-family: var(--font-mono);
+  background: rgba(93, 170, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 /* Day grouping headers */

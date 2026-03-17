@@ -86,9 +86,53 @@ function buildPassUI(container, passes, satName) {
     const labelClass = isActive ? 'next-pass-badge active' : 'next-pass-badge';
 
     const countdown = isActive ? '' : getCountdown(nextPass.aos.getTime() - now);
+    const elClass = isActive ? 'el-high' : (nextPass.maxEl >= 30 ? 'el-mid' : 'el-low');
+
+    // Satellite arc SVG illustration
+    const arcSvg = `<svg class="next-pass-arc" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="arc-grad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.1"/>
+          <stop offset="50%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.1"/>
+        </linearGradient>
+      </defs>
+      <path d="M10 70 Q100 ${Math.max(5, 70 - nextPass.maxEl)} 190 70" fill="none" stroke="url(#arc-grad)" stroke-width="2" stroke-dasharray="${isActive ? 'none' : '4 3'}"/>
+      <circle cx="10" cy="70" r="2" fill="#5c6980"/>
+      <circle cx="190" cy="70" r="2" fill="#5c6980"/>
+      ${isActive
+        ? `<circle cx="100" cy="${Math.max(8, 70 - nextPass.maxEl)}" r="4" fill="#3fb950" opacity="0.9">
+             <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2s" repeatCount="indefinite"/>
+           </circle>`
+        : `<circle cx="100" cy="${Math.max(8, 70 - nextPass.maxEl)}" r="3" fill="#5daaff" opacity="0.7"/>`
+      }
+      <!-- Antenna -->
+      <g transform="translate(95, 70)">
+        <line x1="5" y1="0" x2="5" y2="-8" stroke="#98a4b8" stroke-width="1.2"/>
+        <circle cx="5" cy="-8" r="3" fill="none" stroke="#98a4b8" stroke-width="1"/>
+        <line x1="1" y1="-5" x2="-2" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
+        <line x1="9" y1="-5" x2="12" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
+      </g>
+      <!-- Satellite icon -->
+      <g transform="translate(${isActive ? 95 : 95}, ${Math.max(2, 70 - nextPass.maxEl - 8)})">
+        <rect x="0" y="2" width="10" height="6" rx="1" fill="#98a4b8" opacity="0.7"/>
+        <rect x="-6" y="3" width="6" height="4" rx="0.5" fill="${isActive ? '#3fb950' : '#5daaff'}" opacity="0.5"/>
+        <rect x="10" y="3" width="6" height="4" rx="0.5" fill="${isActive ? '#3fb950' : '#5daaff'}" opacity="0.5"/>
+      </g>
+      <text x="10" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">AOS</text>
+      <text x="180" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">LOS</text>
+    </svg>`;
 
     card.innerHTML = `
-      <div class="${labelClass}">${label}</div>
+      <div class="next-pass-top">
+        <div class="${labelClass}">${label}</div>
+        ${countdown ? `<div class="next-pass-countdown">${countdown}</div>` : ''}
+      </div>
+      ${arcSvg}
+      <div class="next-pass-el-hero">
+        <span class="next-pass-el-value ${elClass}">${nextPass.maxEl.toFixed(1)}°</span>
+        <span class="next-pass-el-label">max elevation</span>
+      </div>
       <div class="next-pass-times">
         <div class="next-pass-row">
           <span class="next-pass-label">AOS</span>
@@ -98,15 +142,14 @@ function buildPassUI(container, passes, satName) {
         <div class="next-pass-row">
           <span class="next-pass-label">TCA</span>
           <span class="next-pass-value">${fmtTime(nextPass.tca)}</span>
-          <span class="next-pass-date">${nextPass.maxEl.toFixed(1)}° max</span>
+          <span class="next-pass-date">${fmtDuration(nextPass)}</span>
         </div>
         <div class="next-pass-row">
           <span class="next-pass-label">LOS</span>
           <span class="next-pass-value">${fmtTime(nextPass.los)}</span>
-          <span class="next-pass-date">${fmtDuration(nextPass)}</span>
+          <span class="next-pass-date">${fmtDate(nextPass.los)}</span>
         </div>
       </div>
-      ${countdown ? `<div class="next-pass-countdown">${countdown}</div>` : ''}
     `;
     container.append(card);
   }
