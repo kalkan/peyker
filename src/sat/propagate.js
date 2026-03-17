@@ -111,6 +111,125 @@ export function generateGroundTrack(satrec, startTime, durationHours, stepSecond
 }
 
 /**
+ * Compute look angles (elevation, azimuth, range) from a ground station to a satellite.
+ *
+ * @param {Object} satrec - satellite.js satrec object
+ * @param {Date} date - time of observation
+ * @param {Object} gs - ground station { lat, lon, alt } (degrees, degrees, metres)
+ * @returns {{ elevation: number, azimuth: number, rangeSat: number } | null}
+ *   elevation/azimuth in degrees, rangeSat in km
+ */
+export function getLookAngles(satrec, date, gs) {
+  const posVel = satellite.propagate(satrec, date);
+  if (!posVel.position || posVel.position === true) return null;
+
+  const gmst = satellite.gstime(date);
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+
+  const observerGd = {
+    longitude: gs.lon * DEG2RAD,
+    latitude: gs.lat * DEG2RAD,
+    height: (gs.alt || 0) / 1000, // metres → km
+  };
+
+  const posEcf = satellite.eciToEcf(posVel.position, gmst);
+  const lookAngles = satellite.ecfToLookAngles(observerGd, posEcf);
+
+  return {
+    elevation: lookAngles.elevation * RAD2DEG,
+    azimuth: lookAngles.azimuth * RAD2DEG,
+    rangeSat: lookAngles.rangeSat,
+  };
+}
+
+/**
+ * Predict satellite passes over a ground station for a given number of days.
+ *
+ * A pass is detected when the satellite elevation rises above 0° as seen
+ * from the ground station. For each pass we record the start (AOS),
+ * end (LOS), maximum elevation, and the time of max elevation (TCA).
+ *
+ * @param {Object} satrec - satellite.js satrec object
+ * @param {Object} gs - ground station { lat, lon, alt }
+ * @param {number} days - how many days to look ahead
+ * @param {number} [stepSeconds=30] - coarse scan step
+ * @returns {Array<{ aos: Date, los: Date, tca: Date, maxEl: number }>}
+ */
+export function predictPasses(satrec, gs, days, stepSeconds = 30) {
+  const passes = [];
+  const start = Date.now();
+  const end = start + days * 86400000;
+  const stepMs = stepSeconds * 1000;
+
+  let inPass = false;
+  let passStart = null;
+  let maxEl = 0;
+  let maxElTime = null;
+
+  for (let t = start; t <= end; t += stepMs) {
+    const date = new Date(t);
+    const look = getLookAngles(satrec, date, gs);
+    if (!look) continue;
+
+    if (look.elevation > 0) {
+      if (!inPass) {
+        // Refine AOS with 1-second precision
+        passStart = refineTime(satrec, gs, t - stepMs, t, true);
+        inPass = true;
+        maxEl = look.elevation;
+        maxElTime = date;
+      }
+      if (look.elevation > maxEl) {
+        maxEl = look.elevation;
+        maxElTime = date;
+      }
+    } else if (inPass) {
+      // Refine LOS with 1-second precision
+      const los = refineTime(satrec, gs, t - stepMs, t, false);
+      passes.push({
+        aos: new Date(passStart),
+        los: new Date(los),
+        tca: new Date(maxElTime),
+        maxEl,
+      });
+      inPass = false;
+      maxEl = 0;
+    }
+  }
+
+  // Close any pass still in progress at end of window
+  if (inPass) {
+    passes.push({
+      aos: new Date(passStart),
+      los: new Date(end),
+      tca: new Date(maxElTime),
+      maxEl,
+    });
+  }
+
+  return passes;
+}
+
+/**
+ * Binary search to find the precise crossing time (elevation = 0).
+ * @param {boolean} rising - true for AOS (find where el goes > 0), false for LOS
+ */
+function refineTime(satrec, gs, tLow, tHigh, rising) {
+  for (let i = 0; i < 15; i++) {
+    const tMid = (tLow + tHigh) / 2;
+    const look = getLookAngles(satrec, new Date(tMid), gs);
+    const aboveHorizon = look && look.elevation > 0;
+    if (rising ? aboveHorizon : !aboveHorizon) {
+      tHigh = tMid;
+    } else {
+      tLow = tMid;
+    }
+  }
+  return rising ? tHigh : tLow;
+}
+
+/**
  * Split a polyline of lat/lon points at anti-meridian crossings.
  * Returns an array of segments, each being an array of [lat, lon] pairs.
  *

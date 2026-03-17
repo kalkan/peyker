@@ -561,6 +561,61 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   display: block;
 }
 
+/* ===== Pass Predictions ===== */
+.pass-section {
+  margin-top: 8px;
+}
+
+.pass-content {
+  display: none;
+  margin-top: 6px;
+}
+
+.pass-content.open {
+  display: block;
+}
+
+.pass-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.pass-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.pass-table th {
+  text-align: left;
+  padding: 4px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pass-table td {
+  padding: 4px 6px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(80, 110, 160, 0.04);
+  white-space: nowrap;
+}
+
+.pass-table tr:hover td {
+  background: var(--bg-glass);
+}
+
+.pass-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
 /* ===== Status Bar ===== */
 .status-bar {
   padding: 8px 14px;
