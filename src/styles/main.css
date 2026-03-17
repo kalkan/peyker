@@ -150,7 +150,7 @@ html, body {
 }
 
 #right-panel .sidebar-header h1 {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 #right-panel .sidebar-section {
@@ -160,6 +160,82 @@ html, body {
 #right-panel .sidebar-content {
   flex: 1;
   overflow-y: auto;
+}
+
+#right-panel .section-title {
+  font-size: 12px;
+}
+
+#right-panel .empty-state {
+  font-size: 13px;
+}
+
+#right-panel .pass-loading {
+  font-size: 13px;
+}
+
+#right-panel .next-pass-badge {
+  font-size: 11px;
+}
+
+#right-panel .next-pass-row {
+  font-size: 13px;
+}
+
+#right-panel .next-pass-label {
+  font-size: 11px;
+}
+
+#right-panel .next-pass-date {
+  font-size: 12px;
+}
+
+#right-panel .next-pass-countdown {
+  font-size: 12px;
+}
+
+#right-panel .pass-day-header {
+  font-size: 12px;
+}
+
+#right-panel .pass-table {
+  font-size: 12px;
+}
+
+#right-panel .pass-table th {
+  font-size: 11px;
+}
+
+#right-panel .pass-table td {
+  padding: 5px 6px;
+}
+
+#right-panel .el-badge {
+  font-size: 11px;
+}
+
+#right-panel .pass-note {
+  font-size: 11px;
+}
+
+#right-panel .overlap-sats {
+  font-size: 13px;
+}
+
+#right-panel .overlap-dur {
+  font-size: 12px;
+}
+
+#right-panel .overlap-times {
+  font-size: 12px;
+}
+
+#right-panel .overlap-details {
+  font-size: 12px;
+}
+
+#right-panel .overlap-sat-list {
+  font-size: 12px;
 }
 
 /* ===== Map ===== */
