@@ -814,6 +814,59 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border-radius: 4px;
 }
 
+.next-pass-badge.past {
+  color: var(--text-muted);
+}
+
+/* Pass navigation bar */
+.pass-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 0 2px;
+}
+
+.pass-nav-btn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.pass-nav-btn:hover:not(:disabled) {
+  background: var(--bg-glass-deep);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.pass-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pass-nav-home {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  padding: 5px 10px;
+}
+
+.pass-nav-counter {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 50px;
+  text-align: center;
+}
+
 /* Day grouping headers */
 .pass-day-header {
   font-size: 11px;

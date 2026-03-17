@@ -11,6 +11,10 @@ import { GROUND_STATIONS } from '../sat/presets.js';
 let passCache = null;
 const CACHE_TTL = 60000; // 1 minute
 
+// Currently viewed pass index (persists across re-renders for same satellite)
+let viewedPassIndex = -1; // -1 means "auto: next upcoming"
+let viewedSatId = null;
+
 /**
  * Render the passes panel into the given container.
  */
@@ -75,84 +79,29 @@ function buildPassUI(container, passes, satName) {
 
   const now = Date.now();
 
-  // Next pass highlight card
-  const nextPass = passes.find(p => p.los.getTime() > now);
-  if (nextPass) {
-    const card = document.createElement('div');
-    card.className = 'next-pass-card';
-
-    const isActive = nextPass.aos.getTime() <= now;
-    const label = isActive ? 'ACTIVE PASS' : 'NEXT PASS';
-    const labelClass = isActive ? 'next-pass-badge active' : 'next-pass-badge';
-
-    const countdown = isActive ? '' : getCountdown(nextPass.aos.getTime() - now);
-    const elClass = isActive ? 'el-high' : (nextPass.maxEl >= 30 ? 'el-mid' : 'el-low');
-
-    // Satellite arc SVG illustration
-    const arcSvg = `<svg class="next-pass-arc" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="arc-grad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.1"/>
-          <stop offset="50%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.3"/>
-          <stop offset="100%" stop-color="${isActive ? '#3fb950' : '#5daaff'}" stop-opacity="0.1"/>
-        </linearGradient>
-      </defs>
-      <path d="M10 70 Q100 ${Math.max(5, 70 - nextPass.maxEl)} 190 70" fill="none" stroke="url(#arc-grad)" stroke-width="2" stroke-dasharray="${isActive ? 'none' : '4 3'}"/>
-      <circle cx="10" cy="70" r="2" fill="#5c6980"/>
-      <circle cx="190" cy="70" r="2" fill="#5c6980"/>
-      ${isActive
-        ? `<circle cx="100" cy="${Math.max(8, 70 - nextPass.maxEl)}" r="4" fill="#3fb950" opacity="0.9">
-             <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2s" repeatCount="indefinite"/>
-           </circle>`
-        : `<circle cx="100" cy="${Math.max(8, 70 - nextPass.maxEl)}" r="3" fill="#5daaff" opacity="0.7"/>`
-      }
-      <!-- Antenna -->
-      <g transform="translate(95, 70)">
-        <line x1="5" y1="0" x2="5" y2="-8" stroke="#98a4b8" stroke-width="1.2"/>
-        <circle cx="5" cy="-8" r="3" fill="none" stroke="#98a4b8" stroke-width="1"/>
-        <line x1="1" y1="-5" x2="-2" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
-        <line x1="9" y1="-5" x2="12" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
-      </g>
-      <!-- Satellite icon -->
-      <g transform="translate(${isActive ? 95 : 95}, ${Math.max(2, 70 - nextPass.maxEl - 8)})">
-        <rect x="0" y="2" width="10" height="6" rx="1" fill="#98a4b8" opacity="0.7"/>
-        <rect x="-6" y="3" width="6" height="4" rx="0.5" fill="${isActive ? '#3fb950' : '#5daaff'}" opacity="0.5"/>
-        <rect x="10" y="3" width="6" height="4" rx="0.5" fill="${isActive ? '#3fb950' : '#5daaff'}" opacity="0.5"/>
-      </g>
-      <text x="10" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">AOS</text>
-      <text x="180" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">LOS</text>
-    </svg>`;
-
-    card.innerHTML = `
-      <div class="next-pass-top">
-        <div class="${labelClass}">${label}</div>
-        ${countdown ? `<div class="next-pass-countdown">${countdown}</div>` : ''}
-      </div>
-      ${arcSvg}
-      <div class="next-pass-el-hero">
-        <span class="next-pass-el-value ${elClass}">${nextPass.maxEl.toFixed(1)}°</span>
-        <span class="next-pass-el-label">max elevation</span>
-      </div>
-      <div class="next-pass-times">
-        <div class="next-pass-row">
-          <span class="next-pass-label">AOS</span>
-          <span class="next-pass-value">${fmtTime(nextPass.aos)}</span>
-          <span class="next-pass-date">${fmtDate(nextPass.aos)}</span>
-        </div>
-        <div class="next-pass-row">
-          <span class="next-pass-label">TCA</span>
-          <span class="next-pass-value">${fmtTime(nextPass.tca)}</span>
-          <span class="next-pass-date">${fmtDuration(nextPass)}</span>
-        </div>
-        <div class="next-pass-row">
-          <span class="next-pass-label">LOS</span>
-          <span class="next-pass-value">${fmtTime(nextPass.los)}</span>
-          <span class="next-pass-date">${fmtDate(nextPass.los)}</span>
-        </div>
-      </div>
-    `;
-    container.append(card);
+  // Reset index if satellite changed
+  const state = getState();
+  if (viewedSatId !== state.selectedSatId) {
+    viewedSatId = state.selectedSatId;
+    viewedPassIndex = -1;
   }
+
+  // Determine which pass to show in the card
+  const nextUpIdx = passes.findIndex(p => p.los.getTime() > now);
+  let currentIdx;
+  if (viewedPassIndex === -1) {
+    currentIdx = nextUpIdx >= 0 ? nextUpIdx : 0;
+  } else {
+    currentIdx = Math.max(0, Math.min(viewedPassIndex, passes.length - 1));
+  }
+
+  const pass = passes[currentIdx];
+  const isAutoNext = viewedPassIndex === -1;
+
+  // Build card wrapper so we can replace just the card on nav
+  const cardWrapper = document.createElement('div');
+  renderPassCard(cardWrapper, pass, passes, currentIdx, nextUpIdx, now, isAutoNext);
+  container.append(cardWrapper);
 
   // Full table grouped by day
   const grouped = groupByDay(passes);
@@ -170,22 +119,36 @@ function buildPassUI(container, passes, satName) {
     table.append(thead);
 
     const tbody = document.createElement('tbody');
-    for (const pass of dayPasses) {
+    for (const p of dayPasses) {
       const tr = document.createElement('tr');
+      const pIdx = passes.indexOf(p);
 
-      const isNext = nextPass && pass.aos.getTime() === nextPass.aos.getTime();
-      const isPast = pass.los.getTime() < now;
-      if (isNext) tr.className = 'pass-row-next';
-      if (isPast) tr.className = 'pass-row-past';
+      const isViewed = pIdx === currentIdx;
+      const isPast = p.los.getTime() < now;
+      if (isViewed) tr.className = 'pass-row-next';
+      else if (isPast) tr.className = 'pass-row-past';
 
-      const elClass = getElClass(pass.maxEl);
+      const elClass = getElClass(p.maxEl);
 
       tr.innerHTML = `
-        <td>${fmtTime(pass.aos)}</td>
-        <td>${fmtTime(pass.los)}</td>
-        <td>${fmtDuration(pass)}</td>
-        <td><span class="el-badge ${elClass}">${pass.maxEl.toFixed(1)}°</span></td>
+        <td>${fmtTime(p.aos)}</td>
+        <td>${fmtTime(p.los)}</td>
+        <td>${fmtDuration(p)}</td>
+        <td><span class="el-badge ${elClass}">${p.maxEl.toFixed(1)}°</span></td>
       `;
+
+      // Click row to jump to that pass in card
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => {
+        viewedPassIndex = pIdx;
+        renderPassCard(cardWrapper, passes[pIdx], passes, pIdx, nextUpIdx, Date.now(), false);
+        // Update row highlights
+        container.querySelectorAll('.pass-table tr').forEach(r => {
+          r.classList.remove('pass-row-next');
+        });
+        tr.classList.add('pass-row-next');
+      });
+
       tbody.append(tr);
     }
     table.append(tbody);
@@ -196,6 +159,164 @@ function buildPassUI(container, passes, satName) {
   note.className = 'pass-note';
   note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} — times in TR (UTC+3)`;
   container.append(note);
+}
+
+function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) {
+  wrapper.innerHTML = '';
+
+  const card = document.createElement('div');
+  card.className = 'next-pass-card';
+
+  const isActive = pass.aos.getTime() <= now && pass.los.getTime() > now;
+  const isPast = pass.los.getTime() <= now;
+  const isNext = idx === nextUpIdx && !isActive;
+
+  let label, labelClass;
+  if (isActive) {
+    label = 'ACTIVE PASS';
+    labelClass = 'next-pass-badge active';
+  } else if (isNext && isAutoNext) {
+    label = 'NEXT PASS';
+    labelClass = 'next-pass-badge';
+  } else if (isPast) {
+    label = 'PAST PASS';
+    labelClass = 'next-pass-badge past';
+  } else {
+    label = 'UPCOMING PASS';
+    labelClass = 'next-pass-badge';
+  }
+
+  const countdown = (!isActive && !isPast) ? getCountdown(pass.aos.getTime() - now) : '';
+  const elColorClass = isActive ? 'el-high' : (pass.maxEl >= 30 ? 'el-mid' : (pass.maxEl >= 10 ? 'el-low' : 'el-vlow'));
+  const accentColor = isActive ? '#3fb950' : '#5daaff';
+
+  const arcSvg = buildArcSvg(pass, isActive, accentColor);
+
+  card.innerHTML = `
+    <div class="next-pass-top">
+      <div class="${labelClass}">${label}</div>
+      ${countdown ? `<div class="next-pass-countdown">${countdown}</div>` : ''}
+    </div>
+    ${arcSvg}
+    <div class="next-pass-el-hero">
+      <span class="next-pass-el-value ${elColorClass}">${pass.maxEl.toFixed(1)}°</span>
+      <span class="next-pass-el-label">max elevation</span>
+    </div>
+    <div class="next-pass-times">
+      <div class="next-pass-row">
+        <span class="next-pass-label">AOS</span>
+        <span class="next-pass-value">${fmtTime(pass.aos)}</span>
+        <span class="next-pass-date">${fmtDate(pass.aos)}</span>
+      </div>
+      <div class="next-pass-row">
+        <span class="next-pass-label">TCA</span>
+        <span class="next-pass-value">${fmtTime(pass.tca)}</span>
+        <span class="next-pass-date">${fmtDuration(pass)}</span>
+      </div>
+      <div class="next-pass-row">
+        <span class="next-pass-label">LOS</span>
+        <span class="next-pass-value">${fmtTime(pass.los)}</span>
+        <span class="next-pass-date">${fmtDate(pass.los)}</span>
+      </div>
+    </div>
+  `;
+
+  wrapper.append(card);
+
+  // Navigation bar
+  const nav = document.createElement('div');
+  nav.className = 'pass-nav';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'pass-nav-btn';
+  prevBtn.innerHTML = '&#9664;';
+  prevBtn.title = 'Previous pass';
+  prevBtn.disabled = idx <= 0;
+  prevBtn.addEventListener('click', () => {
+    viewedPassIndex = idx - 1;
+    renderPassCard(wrapper, passes[viewedPassIndex], passes, viewedPassIndex, nextUpIdx, Date.now(), false);
+    highlightTableRow(wrapper.parentElement, viewedPassIndex, passes);
+  });
+
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'pass-nav-btn';
+  nextBtn.innerHTML = '&#9654;';
+  nextBtn.title = 'Next pass';
+  nextBtn.disabled = idx >= passes.length - 1;
+  nextBtn.addEventListener('click', () => {
+    viewedPassIndex = idx + 1;
+    renderPassCard(wrapper, passes[viewedPassIndex], passes, viewedPassIndex, nextUpIdx, Date.now(), false);
+    highlightTableRow(wrapper.parentElement, viewedPassIndex, passes);
+  });
+
+  const counter = document.createElement('span');
+  counter.className = 'pass-nav-counter';
+  counter.textContent = `${idx + 1} / ${passes.length}`;
+
+  const homeBtn = document.createElement('button');
+  homeBtn.className = 'pass-nav-btn pass-nav-home';
+  homeBtn.textContent = 'Next';
+  homeBtn.title = 'Jump to next upcoming pass';
+  homeBtn.disabled = nextUpIdx < 0;
+  homeBtn.addEventListener('click', () => {
+    viewedPassIndex = -1;
+    renderPassCard(wrapper, passes[nextUpIdx >= 0 ? nextUpIdx : 0], passes, nextUpIdx >= 0 ? nextUpIdx : 0, nextUpIdx, Date.now(), true);
+    highlightTableRow(wrapper.parentElement, nextUpIdx >= 0 ? nextUpIdx : 0, passes);
+  });
+
+  nav.append(prevBtn, counter, homeBtn, nextBtn);
+  wrapper.append(nav);
+}
+
+function highlightTableRow(container, idx, passes) {
+  if (!container) return;
+  container.querySelectorAll('.pass-table tbody tr').forEach(tr => {
+    tr.classList.remove('pass-row-next');
+  });
+  // Find the right row — count through all tables
+  let rowCount = 0;
+  container.querySelectorAll('.pass-table tbody tr').forEach(tr => {
+    if (rowCount === idx) tr.classList.add('pass-row-next');
+    rowCount++;
+  });
+}
+
+function buildArcSvg(pass, isActive, accentColor) {
+  const arcY = Math.max(5, 70 - pass.maxEl);
+  const dotY = Math.max(8, 70 - pass.maxEl);
+  const satY = Math.max(2, 70 - pass.maxEl - 8);
+
+  return `<svg class="next-pass-arc" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="arc-grad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${accentColor}" stop-opacity="0.1"/>
+        <stop offset="50%" stop-color="${accentColor}" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="${accentColor}" stop-opacity="0.1"/>
+      </linearGradient>
+    </defs>
+    <path d="M10 70 Q100 ${arcY} 190 70" fill="none" stroke="url(#arc-grad)" stroke-width="2" stroke-dasharray="${isActive ? 'none' : '4 3'}"/>
+    <circle cx="10" cy="70" r="2" fill="#5c6980"/>
+    <circle cx="190" cy="70" r="2" fill="#5c6980"/>
+    ${isActive
+      ? `<circle cx="100" cy="${dotY}" r="4" fill="#3fb950" opacity="0.9">
+           <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2s" repeatCount="indefinite"/>
+         </circle>`
+      : `<circle cx="100" cy="${dotY}" r="3" fill="${accentColor}" opacity="0.7"/>`
+    }
+    <g transform="translate(95, 70)">
+      <line x1="5" y1="0" x2="5" y2="-8" stroke="#98a4b8" stroke-width="1.2"/>
+      <circle cx="5" cy="-8" r="3" fill="none" stroke="#98a4b8" stroke-width="1"/>
+      <line x1="1" y1="-5" x2="-2" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
+      <line x1="9" y1="-5" x2="12" y2="-2" stroke="#98a4b8" stroke-width="0.8"/>
+    </g>
+    <g transform="translate(95, ${satY})">
+      <rect x="0" y="2" width="10" height="6" rx="1" fill="#98a4b8" opacity="0.7"/>
+      <rect x="-6" y="3" width="6" height="4" rx="0.5" fill="${accentColor}" opacity="0.5"/>
+      <rect x="10" y="3" width="6" height="4" rx="0.5" fill="${accentColor}" opacity="0.5"/>
+    </g>
+    <text x="10" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">AOS</text>
+    <text x="180" y="78" font-size="7" fill="#5c6980" font-family="sans-serif">LOS</text>
+  </svg>`;
 }
 
 function groupByDay(passes) {
