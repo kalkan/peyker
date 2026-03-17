@@ -7,6 +7,7 @@ import { PRESETS } from '../sat/presets.js';
 import { getState, setState } from './state.js';
 import { renderSatList } from './satellite-list.js';
 import { renderInfoPanel } from './info-panel.js';
+import { renderPassesPanel } from './passes-panel.js';
 import {
   renderDateControls,
   renderLiveControls,
@@ -21,6 +22,7 @@ let dateControlsContainer = null;
 let liveControlsContainer = null;
 let exportControlsContainer = null;
 let gsControlsContainer = null;
+let passesContainer = null;
 let statusEl = null;
 
 /**
@@ -112,7 +114,13 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(gsControlsContainer);
   }));
 
-  // 6. Satellite Info Panel
+  // 6. Upcoming Passes
+  content.append(createSection('Upcoming Passes', (body) => {
+    passesContainer = document.createElement('div');
+    body.append(passesContainer);
+  }));
+
+  // 7. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -137,6 +145,7 @@ export function updateSidebar(callbacks) {
   if (liveControlsContainer) renderLiveControls(liveControlsContainer, callbacks);
   if (exportControlsContainer) renderExportControls(exportControlsContainer, callbacks);
   if (gsControlsContainer) renderGroundStationControls(gsControlsContainer, callbacks);
+  if (passesContainer) renderPassesPanel(passesContainer);
 }
 
 /**
@@ -145,6 +154,7 @@ export function updateSidebar(callbacks) {
 export function updateSatListAndInfo() {
   if (satListContainer) renderSatList(satListContainer);
   if (infoContainer) renderInfoPanel(infoContainer);
+  if (passesContainer) renderPassesPanel(passesContainer);
 }
 
 /**

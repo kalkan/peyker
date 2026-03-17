@@ -562,35 +562,95 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* ===== Pass Predictions ===== */
-.pass-section {
-  margin-top: 8px;
-}
-
-.pass-content {
-  display: none;
-  margin-top: 6px;
-}
-
-.pass-content.open {
-  display: block;
-}
-
 .pass-loading {
   font-size: 12px;
   color: var(--text-muted);
   padding: 8px 0;
 }
 
+/* Next pass highlight card */
+.next-pass-card {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.next-pass-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.next-pass-badge.active {
+  color: #3fb950;
+}
+
+.next-pass-times {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.next-pass-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.next-pass-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.next-pass-value {
+  color: var(--text-primary);
+}
+
+.next-pass-date {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.next-pass-countdown {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+/* Day grouping headers */
+.pass-day-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 0 3px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 2px;
+}
+
+/* Pass table */
 .pass-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 11px;
   font-family: var(--font-mono);
+  margin-bottom: 6px;
 }
 
 .pass-table th {
   text-align: left;
-  padding: 4px 6px;
+  padding: 3px 5px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -600,7 +660,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 .pass-table td {
-  padding: 4px 6px;
+  padding: 4px 5px;
   color: var(--text-secondary);
   border-bottom: 1px solid rgba(80, 110, 160, 0.04);
   white-space: nowrap;
@@ -610,10 +670,48 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background: var(--bg-glass);
 }
 
-.pass-note {
-  font-size: 11px;
+.pass-row-next td {
+  color: var(--accent) !important;
+  background: rgba(93, 170, 255, 0.06);
+}
+
+.pass-row-past td {
+  opacity: 0.4;
+}
+
+/* Elevation color badges */
+.el-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.el-high {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.el-mid {
+  color: #f0883e;
+  background: rgba(240, 136, 62, 0.12);
+}
+
+.el-low {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.10);
+}
+
+.el-vlow {
   color: var(--text-muted);
-  margin-top: 6px;
+  background: rgba(80, 110, 160, 0.08);
+}
+
+.pass-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 /* ===== Status Bar ===== */

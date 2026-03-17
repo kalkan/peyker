@@ -4,8 +4,7 @@
  */
 
 import { getState, findSatellite } from './state.js';
-import { getOrbitalElements, propagateAt, predictPasses } from '../sat/propagate.js';
-import { GROUND_STATIONS } from '../sat/presets.js';
+import { getOrbitalElements, propagateAt } from '../sat/propagate.js';
 
 /**
  * Render satellite info panel into the given container.
@@ -91,89 +90,6 @@ export function renderInfoPanel(container) {
     container.append(tleSection);
   }
 
-  // Upcoming passes (next 7 days)
-  if (sat.satrec && GROUND_STATIONS.length > 0) {
-    const gs = GROUND_STATIONS[0];
-    const passSection = document.createElement('div');
-    passSection.className = 'pass-section';
-
-    const passToggle = document.createElement('button');
-    passToggle.className = 'tle-toggle';
-    passToggle.textContent = '▶ Upcoming Passes (7 days)';
-
-    const passContent = document.createElement('div');
-    passContent.className = 'pass-content';
-
-    let computed = false;
-
-    passToggle.addEventListener('click', () => {
-      const isOpen = passContent.classList.toggle('open');
-      passToggle.textContent = isOpen ? '▼ Upcoming Passes (7 days)' : '▶ Upcoming Passes (7 days)';
-
-      if (isOpen && !computed) {
-        computed = true;
-        passContent.innerHTML = '<div class="pass-loading">Computing passes...</div>';
-
-        // Run in next frame to avoid blocking UI
-        requestAnimationFrame(() => {
-          const passes = predictPasses(sat.satrec, gs, 7);
-          renderPassTable(passContent, passes);
-        });
-      }
-    });
-
-    passSection.append(passToggle, passContent);
-    container.append(passSection);
-  }
-}
-
-function renderPassTable(container, passes) {
-  container.innerHTML = '';
-
-  if (passes.length === 0) {
-    container.innerHTML = '<div class="empty-state">No passes in the next 7 days</div>';
-    return;
-  }
-
-  const table = document.createElement('table');
-  table.className = 'pass-table';
-
-  const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>AOS (TR)</th><th>LOS (TR)</th><th>Dur.</th><th>Max El.</th></tr>';
-  table.append(thead);
-
-  const tbody = document.createElement('tbody');
-  for (const pass of passes) {
-    const tr = document.createElement('tr');
-    const durSec = (pass.los - pass.aos) / 1000;
-    const durMin = Math.floor(durSec / 60);
-    const durS = Math.floor(durSec % 60);
-
-    tr.innerHTML = `
-      <td>${fmtDateTime(pass.aos)}</td>
-      <td>${fmtDateTime(pass.los)}</td>
-      <td>${durMin}m ${durS}s</td>
-      <td>${pass.maxEl.toFixed(1)}°</td>
-    `;
-    tbody.append(tr);
-  }
-
-  table.append(tbody);
-  container.append(table);
-
-  const note = document.createElement('div');
-  note.className = 'pass-note';
-  note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} found`;
-  container.append(note);
-}
-
-function fmtDateTime(date) {
-  return date.toLocaleString('tr-TR', {
-    timeZone: 'Europe/Istanbul',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  });
 }
 
 function addLinkRow(grid, label, url, text) {

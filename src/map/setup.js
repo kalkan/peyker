@@ -4,6 +4,7 @@
 
 import L from 'leaflet';
 import { GROUND_STATIONS } from '../sat/presets.js';
+import { buildGsPopupContent } from '../ui/passes-panel.js';
 
 let map = null;
 let baseLayers = {};
@@ -91,9 +92,11 @@ export function initMap() {
       popupAnchor: [0, -36],
     });
 
-    L.marker([gs.lat, gs.lon], { icon })
-      .bindPopup(`<strong>${gs.name}</strong><br>${gs.lat.toFixed(5)}°, ${gs.lon.toFixed(5)}°${gs.alt != null ? `<br>Altitude: ${gs.alt} m` : ''}`)
-      .addTo(gsGroup);
+    const marker = L.marker([gs.lat, gs.lon], { icon }).addTo(gsGroup);
+    marker.bindPopup('', { maxWidth: 320 });
+    marker.on('click', () => {
+      marker.setPopupContent(buildGsPopupContent(gs));
+    });
   }
   addOverlay('Ground Stations', gsGroup);
 
