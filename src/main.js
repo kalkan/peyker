@@ -5,7 +5,7 @@
 
 import 'leaflet/dist/leaflet.css';
 import './styles/main.css';
-import { initMap } from './map/setup.js';
+import { initMap, toggleCoverage } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
 import { getOrCreateLayers, clearAllLayers } from './map/layers.js';
@@ -46,6 +46,9 @@ function init() {
   updateSidebar(getCallbacks());
   restoreSatellites();
 
+  // Restore coverage circle state
+  if (getState().coverageVisible) toggleCoverage(true);
+
   // Always start the live timer — it checks per-satellite showLive flags
   startLiveUpdates();
 }
@@ -69,6 +72,7 @@ function getCallbacks() {
       stopLiveUpdates();
       startLiveUpdates();
     },
+    onCoverageToggle: (visible) => toggleCoverage(visible),
     onExportSelected: () => exportSelected(),
     onExportAll: () => exportAll(),
   };

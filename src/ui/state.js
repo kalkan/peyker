@@ -15,6 +15,7 @@ const defaultState = {
   trackDuration: 24,    // hours
   liveEnabled: false,
   liveInterval: 5,      // seconds
+  coverageVisible: false, // ground station coverage circle
   nextColorIndex: 0,
 };
 
@@ -44,6 +45,7 @@ export function loadState() {
     if (parsed.trackDuration) state.trackDuration = parsed.trackDuration;
     if (parsed.liveInterval) state.liveInterval = parsed.liveInterval;
     if (typeof parsed.liveEnabled === 'boolean') state.liveEnabled = parsed.liveEnabled;
+    if (typeof parsed.coverageVisible === 'boolean') state.coverageVisible = parsed.coverageVisible;
     if (typeof parsed.nextColorIndex === 'number') state.nextColorIndex = parsed.nextColorIndex;
 
     // Restore satellite list (just IDs, names, colors — TLE will be re-fetched)
@@ -79,6 +81,7 @@ function persistState() {
       trackDuration: state.trackDuration,
       liveInterval: state.liveInterval,
       liveEnabled: state.liveEnabled,
+      coverageVisible: state.coverageVisible,
       nextColorIndex: state.nextColorIndex,
       satellites: state.satellites.map(s => ({
         noradId: s.noradId,

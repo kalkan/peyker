@@ -127,6 +127,20 @@ export function renderExportControls(container, callbacks) {
   container.append(btnGroup);
 }
 
+/**
+ * Render ground station controls (coverage circle toggle).
+ */
+export function renderGroundStationControls(container, callbacks) {
+  const state = getState();
+  container.innerHTML = '';
+
+  const toggle = createToggleRow('Coverage circle (2500 km)', state.coverageVisible, (checked) => {
+    setState({ coverageVisible: checked });
+    callbacks.onCoverageToggle(checked);
+  });
+  container.append(toggle);
+}
+
 // --- Helpers ---
 
 function createControlRow(labelText, inputType, value, onChange) {

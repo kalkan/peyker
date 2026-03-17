@@ -10,6 +10,7 @@ let baseLayers = {};
 let overlayLayers = {};
 let layerControl = null;
 let coordsDisplay = null;
+let coverageCircle = null;
 
 /**
  * Initialize the Leaflet map.
@@ -96,6 +97,18 @@ export function initMap() {
   }
   addOverlay('Ground Stations', gsGroup);
 
+  // Coverage circle (2500 km radius) for each ground station
+  for (const gs of GROUND_STATIONS) {
+    coverageCircle = L.circle([gs.lat, gs.lon], {
+      radius: 2500 * 1000,
+      color: '#e04040',
+      weight: 1.5,
+      fillColor: '#e04040',
+      fillOpacity: 0.08,
+      dashArray: '6 4',
+    });
+  }
+
   // Ensure map renders correctly after layout settles
   setTimeout(() => map.invalidateSize(), 100);
 
@@ -128,6 +141,18 @@ export function removeOverlay(name) {
     if (layerControl) layerControl.removeLayer(layer);
     if (map && map.hasLayer(layer)) map.removeLayer(layer);
     delete overlayLayers[name];
+  }
+}
+
+/**
+ * Toggle the ground station coverage circle on/off.
+ */
+export function toggleCoverage(visible) {
+  if (!map || !coverageCircle) return;
+  if (visible) {
+    coverageCircle.addTo(map);
+  } else {
+    map.removeLayer(coverageCircle);
   }
 }
 

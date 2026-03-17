@@ -11,6 +11,7 @@ import {
   renderDateControls,
   renderLiveControls,
   renderExportControls,
+  renderGroundStationControls,
 } from './controls.js';
 
 // Container references for re-rendering
@@ -19,6 +20,7 @@ let infoContainer = null;
 let dateControlsContainer = null;
 let liveControlsContainer = null;
 let exportControlsContainer = null;
+let gsControlsContainer = null;
 let statusEl = null;
 
 /**
@@ -104,7 +106,13 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(exportControlsContainer);
   }));
 
-  // 5. Satellite Info Panel
+  // 5. Ground Station Controls
+  content.append(createSection('Ground Station', (body) => {
+    gsControlsContainer = document.createElement('div');
+    body.append(gsControlsContainer);
+  }));
+
+  // 6. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -128,6 +136,7 @@ export function updateSidebar(callbacks) {
   if (dateControlsContainer) renderDateControls(dateControlsContainer, callbacks);
   if (liveControlsContainer) renderLiveControls(liveControlsContainer, callbacks);
   if (exportControlsContainer) renderExportControls(exportControlsContainer, callbacks);
+  if (gsControlsContainer) renderGroundStationControls(gsControlsContainer, callbacks);
 }
 
 /**
