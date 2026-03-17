@@ -139,7 +139,7 @@ function renderPassTable(container, passes) {
   table.className = 'pass-table';
 
   const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>AOS (UTC)</th><th>LOS (UTC)</th><th>Dur.</th><th>Max El.</th></tr>';
+  thead.innerHTML = '<tr><th>AOS (TR)</th><th>LOS (TR)</th><th>Dur.</th><th>Max El.</th></tr>';
   table.append(thead);
 
   const tbody = document.createElement('tbody');
@@ -168,7 +168,12 @@ function renderPassTable(container, passes) {
 }
 
 function fmtDateTime(date) {
-  return date.toISOString().replace('T', ' ').slice(0, 19);
+  return date.toLocaleString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
 }
 
 function addLinkRow(grid, label, url, text) {
