@@ -11,8 +11,9 @@ import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
 import { getOrCreateLayers, clearAllLayers } from './map/layers.js';
 import { fetchTLE, fetchGPJson, fetchSATCAT } from './sat/fetch.js';
 import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian } from './sat/propagate.js';
-import { getColor } from './sat/presets.js';
+import { getColor, GROUND_STATIONS } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
+import { predictPasses } from './sat/propagate.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
 
@@ -30,6 +31,8 @@ L.Icon.Default.mergeOptions({
 });
 
 let liveTimer = null;
+let countdownOverlayTimer = null;
+let countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
 
 // ===== Initialize =====
 function init() {
@@ -54,6 +57,10 @@ function init() {
 
   // Always start the live timer — it checks per-satellite showLive flags
   startLiveUpdates();
+
+  // Start map countdown overlay
+  startCountdownOverlay();
+  subscribe(() => updateCountdownOverlay());
 }
 
 /**
@@ -331,6 +338,84 @@ function exportAll() {
   const filename = `all_satellites_${dateStr}.kml`;
   downloadKML(filename, kml);
   showToast(`Exported ${filename} (${visibleSats.length} satellites)`, 'success');
+}
+
+// ===== Map Countdown Overlay =====
+
+function startCountdownOverlay() {
+  updateCountdownOverlay();
+  if (countdownOverlayTimer) clearInterval(countdownOverlayTimer);
+  countdownOverlayTimer = setInterval(updateCountdownOverlay, 1000);
+}
+
+function updateCountdownOverlay() {
+  const el = document.getElementById('pass-countdown-overlay');
+  if (!el) return;
+
+  const state = getState();
+  const sat = state.selectedSatId ? findSatellite(state.selectedSatId) : null;
+
+  if (!sat || !sat.satrec || GROUND_STATIONS.length === 0) {
+    el.classList.remove('visible');
+    return;
+  }
+
+  const gs = GROUND_STATIONS[0];
+  const now = Date.now();
+
+  // Cache passes for 60s per satellite
+  if (countdownPassCache.noradId !== sat.noradId || (now - countdownPassCache.computedAt) > 60000) {
+    countdownPassCache = {
+      noradId: sat.noradId,
+      passes: predictPasses(sat.satrec, gs, 7),
+      computedAt: now,
+    };
+  }
+
+  const passes = countdownPassCache.passes;
+  if (!passes || passes.length === 0) {
+    el.classList.remove('visible');
+    return;
+  }
+
+  // Find active or next pass
+  const activePass = passes.find(p => p.aos.getTime() <= now && p.los.getTime() > now);
+  const nextPass = passes.find(p => p.los.getTime() > now);
+  const pass = activePass || nextPass;
+
+  if (!pass) {
+    el.classList.remove('visible');
+    return;
+  }
+
+  const isActive = activePass != null;
+  const target = isActive ? pass.los.getTime() : pass.aos.getTime();
+  const remaining = target - now;
+
+  if (remaining <= 0) return;
+
+  const label = isActive ? 'Geçiş bitimine kalan' : 'Geçişe kalan süre';
+  const timeStr = fmtCountdownOverlay(remaining);
+
+  el.classList.add('visible');
+  el.classList.toggle('active', isActive);
+  el.innerHTML = `
+    <div class="overlay-sat-name">${sat.name}</div>
+    <div class="overlay-countdown-label">${label}</div>
+    <div class="overlay-countdown-time">${timeStr}</div>
+    <div class="overlay-pass-info">Max El: ${pass.maxEl.toFixed(1)}°</div>
+  `;
+}
+
+function fmtCountdownOverlay(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  if (d > 0) return `${d}g ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 // ===== Toast Notifications =====
