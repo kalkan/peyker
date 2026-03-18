@@ -16,9 +16,16 @@ const dist = join(root, 'dist');
 
 // Copy dev.html → index.html (at repo root)
 const devHtml = readFileSync(join(dist, 'dev.html'), 'utf8');
-// Fix asset paths: ./assets/dev-xxx → ./assets/dev-xxx (already correct)
 writeFileSync(join(root, 'index.html'), devHtml);
 console.log('  Copied dist/dev.html → index.html');
+
+// Copy mobile.html → mobile.html (at repo root)
+const mobilePath = join(dist, 'mobile.html');
+if (existsSync(mobilePath)) {
+  const mobileHtml = readFileSync(mobilePath, 'utf8');
+  writeFileSync(join(root, 'mobile.html'), mobileHtml);
+  console.log('  Copied dist/mobile.html → mobile.html');
+}
 
 // Copy assets
 const assetsDir = join(dist, 'assets');

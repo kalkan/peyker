@@ -153,6 +153,36 @@ html, body {
   font-size: 15px;
 }
 
+.right-panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid rgba(93, 170, 255, 0.25);
+  border-radius: 14px;
+  transition: all var(--transition);
+  letter-spacing: 0.3px;
+}
+
+.mobile-link:hover {
+  background: rgba(93, 170, 255, 0.1);
+  border-color: var(--accent);
+}
+
+.mobile-link svg {
+  opacity: 0.7;
+}
+
 #right-panel .sidebar-section {
   padding: 14px 18px;
 }

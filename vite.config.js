@@ -8,7 +8,10 @@ export default defineConfig({
     assetsDir: 'assets',
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(__dirname, 'dev.html'),
+      input: {
+        dev: resolve(__dirname, 'dev.html'),
+        mobile: resolve(__dirname, 'mobile.html'),
+      },
     },
   },
   server: {
