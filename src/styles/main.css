@@ -183,6 +183,11 @@ html, body {
   opacity: 0.7;
 }
 
+.right-panel-header-links {
+  display: flex;
+  gap: 6px;
+}
+
 #right-panel .sidebar-section {
   padding: 14px 18px;
 }

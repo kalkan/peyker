@@ -27,6 +27,14 @@ if (existsSync(mobilePath)) {
   console.log('  Copied dist/mobile.html → mobile.html');
 }
 
+// Copy antenna.html → antenna.html (at repo root)
+const antennaPath = join(dist, 'antenna.html');
+if (existsSync(antennaPath)) {
+  const antennaHtml = readFileSync(antennaPath, 'utf8');
+  writeFileSync(join(root, 'antenna.html'), antennaHtml);
+  console.log('  Copied dist/antenna.html → antenna.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

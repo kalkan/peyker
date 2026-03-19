@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         dev: resolve(__dirname, 'dev.html'),
         mobile: resolve(__dirname, 'mobile.html'),
+        antenna: resolve(__dirname, 'antenna.html'),
       },
     },
   },
