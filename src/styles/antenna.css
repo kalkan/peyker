@@ -110,7 +110,7 @@ body {
 }
 
 .ant-select-row select {
-  background: var(--bg-glass-deep);
+  background: #161b22;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -119,6 +119,12 @@ body {
   font-family: var(--font);
   outline: none;
   min-width: 200px;
+}
+
+.ant-select-row select option {
+  background: #161b22;
+  color: var(--text);
+  padding: 6px;
 }
 
 .ant-select-row select:focus {
@@ -246,7 +252,7 @@ body {
 }
 
 .ant-speed select {
-  background: var(--bg-glass);
+  background: #161b22;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
