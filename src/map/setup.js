@@ -5,6 +5,7 @@
 import L from 'leaflet';
 import { GROUND_STATIONS } from '../sat/presets.js';
 import { buildGsPopupContent } from '../ui/passes-panel.js';
+import { getState } from '../ui/state.js';
 
 let map = null;
 let baseLayers = {};
@@ -12,6 +13,7 @@ let overlayLayers = {};
 let layerControl = null;
 let coordsDisplay = null;
 let coverageCircle = null;
+let gsGroup = null;
 
 /**
  * Initialize the Leaflet map.
@@ -76,41 +78,9 @@ export function initMap() {
   });
 
   // Ground station markers
-  const gsGroup = L.layerGroup().addTo(map);
-  for (const gs of GROUND_STATIONS) {
-    const icon = L.divIcon({
-      className: 'gs-marker',
-      html: `<svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
-        <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#e04040" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
-        <circle cx="14" cy="13" r="5" fill="none" stroke="#fff" stroke-width="1.5"/>
-        <line x1="14" y1="8" x2="14" y2="4" stroke="#fff" stroke-width="1.5"/>
-        <line x1="10" y1="10" x2="7" y2="7" stroke="#fff" stroke-width="1.2"/>
-        <line x1="18" y1="10" x2="21" y2="7" stroke="#fff" stroke-width="1.2"/>
-      </svg>`,
-      iconSize: [28, 36],
-      iconAnchor: [14, 36],
-      popupAnchor: [0, -36],
-    });
-
-    const marker = L.marker([gs.lat, gs.lon], { icon }).addTo(gsGroup);
-    marker.bindPopup('', { maxWidth: 320 });
-    marker.on('click', () => {
-      marker.setPopupContent(buildGsPopupContent(gs));
-    });
-  }
+  gsGroup = L.layerGroup().addTo(map);
+  renderGsMarkers();
   addOverlay('Ground Stations', gsGroup);
-
-  // Coverage circle (2500 km radius) for each ground station
-  for (const gs of GROUND_STATIONS) {
-    coverageCircle = L.circle([gs.lat, gs.lon], {
-      radius: 2500 * 1000,
-      color: '#e04040',
-      weight: 1.5,
-      fillColor: '#e04040',
-      fillOpacity: 0.08,
-      dashArray: '6 4',
-    });
-  }
 
   // Ensure map renders correctly after layout settles
   setTimeout(() => map.invalidateSize(), 100);
@@ -145,6 +115,59 @@ export function removeOverlay(name) {
     if (map && map.hasLayer(layer)) map.removeLayer(layer);
     delete overlayLayers[name];
   }
+}
+
+function renderGsMarkers() {
+  if (!gsGroup) return;
+  gsGroup.clearLayers();
+  if (coverageCircle && map.hasLayer(coverageCircle)) map.removeLayer(coverageCircle);
+  coverageCircle = null;
+
+  const stations = getState().groundStations || GROUND_STATIONS;
+
+  for (const gs of stations) {
+    const icon = L.divIcon({
+      className: 'gs-marker',
+      html: `<svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#e04040" fill-opacity="0.9" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="14" cy="13" r="5" fill="none" stroke="#fff" stroke-width="1.5"/>
+        <line x1="14" y1="8" x2="14" y2="4" stroke="#fff" stroke-width="1.5"/>
+        <line x1="10" y1="10" x2="7" y2="7" stroke="#fff" stroke-width="1.2"/>
+        <line x1="18" y1="10" x2="21" y2="7" stroke="#fff" stroke-width="1.2"/>
+      </svg>`,
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+      popupAnchor: [0, -36],
+    });
+
+    const marker = L.marker([gs.lat, gs.lon], { icon }).addTo(gsGroup);
+    marker.bindPopup('', { maxWidth: 320 });
+    marker.on('click', () => {
+      marker.setPopupContent(buildGsPopupContent(gs));
+    });
+  }
+
+  // Coverage circle for active GS
+  const activeIdx = getState().activeGsIndex || 0;
+  const activeGs = stations[Math.min(activeIdx, stations.length - 1)];
+  if (activeGs) {
+    coverageCircle = L.circle([activeGs.lat, activeGs.lon], {
+      radius: 2500 * 1000,
+      color: '#e04040',
+      weight: 1.5,
+      fillColor: '#e04040',
+      fillOpacity: 0.08,
+      dashArray: '6 4',
+    });
+    if (getState().coverageVisible) coverageCircle.addTo(map);
+  }
+}
+
+/**
+ * Refresh ground station markers from state (called when stations change).
+ */
+export function refreshGsMarkers() {
+  renderGsMarkers();
 }
 
 /**

@@ -565,6 +565,58 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* ===== Quick-add Buttons ===== */
+/* ===== Satellite Search Dropdown ===== */
+.sat-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #161b22;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.sat-search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+}
+
+.sat-search-item:last-child {
+  border-bottom: none;
+}
+
+.sat-search-item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.sat-search-item.loading {
+  color: var(--text-muted);
+  cursor: default;
+  justify-content: center;
+}
+
+.sat-search-name {
+  font-weight: 500;
+}
+
+.sat-search-id {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .quick-add-group {
   display: flex;
   gap: 6px;
@@ -1113,6 +1165,37 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-size: 10px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* ===== Pass Filter ===== */
+.pass-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pass-filter-row label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pass-filter-select {
+  background: #161b22;
+  color: var(--text-primary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.pass-filter-select option {
+  background: #161b22;
+  color: var(--text-primary);
 }
 
 /* ===== Pass Overlap Analysis ===== */

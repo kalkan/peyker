@@ -11,11 +11,41 @@
 const CELESTRAK_GP_URL = 'https://celestrak.org/NORAD/elements/gp.php';
 const CELESTRAK_SATCAT_URL = 'https://celestrak.org/satcat/records.php';
 
+const TLE_CACHE_KEY = 'sat-tle-cache';
+const TLE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+function getTLECache() {
+  try {
+    const raw = localStorage.getItem(TLE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function setTLECache(noradId, data) {
+  try {
+    const cache = getTLECache();
+    cache[noradId] = { ...data, cachedAt: Date.now() };
+    localStorage.setItem(TLE_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* localStorage might be full */ }
+}
+
+function getCachedTLE(noradId) {
+  const cache = getTLECache();
+  const entry = cache[noradId];
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > TLE_CACHE_TTL) return null;
+  return { name: entry.name, line1: entry.line1, line2: entry.line2 };
+}
+
 /**
  * Fetch TLE data for a satellite by NORAD catalog number.
  * Returns { line1, line2, name } or throws on failure.
  */
 export async function fetchTLE(noradId) {
+  // Check localStorage cache first
+  const cached = getCachedTLE(noradId);
+  if (cached) return cached;
+
   const url = `${CELESTRAK_GP_URL}?CATNR=${noradId}&FORMAT=TLE`;
   const response = await fetch(url);
 
@@ -36,20 +66,25 @@ export async function fetchTLE(noradId) {
   }
 
   // CelesTrak 3LE format: line 0 = name, line 1 = TLE line 1, line 2 = TLE line 2
+  let result;
   if (lines.length >= 3 && !lines[0].startsWith('1 ') && !lines[0].startsWith('2 ')) {
-    return {
+    result = {
       name: lines[0].trim(),
       line1: lines[1].trim(),
       line2: lines[2].trim(),
     };
+  } else {
+    // 2-line format (no name)
+    result = {
+      name: `SAT-${noradId}`,
+      line1: lines[0].trim(),
+      line2: lines[1].trim(),
+    };
   }
 
-  // 2-line format (no name)
-  return {
-    name: `SAT-${noradId}`,
-    line1: lines[0].trim(),
-    line2: lines[1].trim(),
-  };
+  // Cache in localStorage
+  setTLECache(noradId, result);
+  return result;
 }
 
 /**
@@ -86,6 +121,33 @@ export async function fetchSATCAT(noradId) {
   } catch {
     // CORS or network failure — this is expected in some environments
     return null;
+  }
+}
+
+/**
+ * Search satellites by name via CelesTrak GP API.
+ * Returns array of { name, noradId } or empty array.
+ */
+export async function searchSatellitesByName(query) {
+  try {
+    const url = `${CELESTRAK_GP_URL}?NAME=${encodeURIComponent(query)}&FORMAT=JSON`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    return data.map(rec => ({
+      name: rec.OBJECT_NAME || `SAT-${rec.NORAD_CAT_ID}`,
+      noradId: rec.NORAD_CAT_ID,
+    }));
+  } catch {
+    return [];
   }
 }
 

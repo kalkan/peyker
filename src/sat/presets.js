@@ -8,11 +8,16 @@ export const PRESETS = [
 ];
 
 /**
- * Preset ground station markers.
+ * Default ground stations. Users can add more via UI.
  */
-export const GROUND_STATIONS = [
-  { name: 'Anten', lat: 39.8911, lon: 32.7787, alt: 925 },
+export const DEFAULT_GROUND_STATIONS = [
+  { name: 'Ankara', lat: 39.8911, lon: 32.7787, alt: 925 },
 ];
+
+/**
+ * Preset ground station markers (backwards compat — use getGroundStations() for runtime).
+ */
+export const GROUND_STATIONS = DEFAULT_GROUND_STATIONS;
 
 /**
  * Palette of distinct colors for satellite tracks.

@@ -3,9 +3,8 @@
  * Computes and displays passes over the ground station for the selected satellite.
  */
 
-import { getState, findSatellite } from './state.js';
+import { getState, setState, findSatellite, getActiveGs } from './state.js';
 import { predictPasses } from '../sat/propagate.js';
-import { GROUND_STATIONS } from '../sat/presets.js';
 
 // Cache: { noradId, passes, computedAt }
 let passCache = null;
@@ -41,25 +40,28 @@ export function renderPassesPanel(container) {
     return;
   }
 
-  if (GROUND_STATIONS.length === 0) {
+  const gs = getActiveGs();
+  if (!gs) {
     container.innerHTML = '<div class="empty-state">No ground station configured</div>';
     return;
   }
-
-  const gs = GROUND_STATIONS[0];
   const now = Date.now();
 
   // Use cache if same satellite and recent
   if (passCache && passCache.noradId === sat.noradId && (now - passCache.computedAt) < CACHE_TTL) {
-    buildPassUI(container, passCache.passes, sat.name);
+    const minEl = state.minElevation || 0;
+    const filteredPasses = minEl > 0 ? passCache.passes.filter(p => p.maxEl >= minEl) : passCache.passes;
+    buildPassUI(container, filteredPasses, sat.name);
     return;
   }
 
   // Show loading then compute
   container.innerHTML = '<div class="pass-loading">Computing passes...</div>';
   requestAnimationFrame(() => {
-    const passes = predictPasses(sat.satrec, gs, 7);
-    passCache = { noradId: sat.noradId, passes, computedAt: Date.now() };
+    const allPasses = predictPasses(sat.satrec, gs, 7);
+    passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
+    const minEl = state.minElevation || 0;
+    const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
     buildPassUI(container, passes, sat.name);
   });
 }
@@ -75,8 +77,29 @@ export function getNextPass(satrec, gs) {
 function buildPassUI(container, passes, satName) {
   container.innerHTML = '';
 
+  // Min elevation filter control
+  const filterRow = document.createElement('div');
+  filterRow.className = 'pass-filter-row';
+  const filterLabel = document.createElement('label');
+  filterLabel.textContent = 'Min El.';
+  const filterInput = document.createElement('select');
+  filterInput.className = 'pass-filter-select';
+  const currentMin = getState().minElevation || 0;
+  for (const val of [0, 5, 10, 15, 20, 30, 45]) {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = val === 0 ? 'All' : `${val}°+`;
+    if (val === currentMin) opt.selected = true;
+    filterInput.append(opt);
+  }
+  filterInput.addEventListener('change', () => {
+    setState({ minElevation: parseInt(filterInput.value, 10) });
+  });
+  filterRow.append(filterLabel, filterInput);
+  container.append(filterRow);
+
   if (passes.length === 0) {
-    container.innerHTML = '<div class="empty-state">No passes in the next 7 days</div>';
+    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'No passes in the next 7 days' }));
     return;
   }
 

@@ -4,6 +4,8 @@
  * State is a simple reactive store: listeners are notified on changes.
  */
 
+import { DEFAULT_GROUND_STATIONS } from '../sat/presets.js';
+
 const STORAGE_KEY = 'sat-groundtrack-state';
 
 const defaultState = {
@@ -16,6 +18,9 @@ const defaultState = {
   liveEnabled: false,
   liveInterval: 5,      // seconds
   coverageVisible: false, // ground station coverage circle
+  minElevation: 0,        // minimum elevation filter for passes (degrees)
+  groundStations: [...DEFAULT_GROUND_STATIONS],
+  activeGsIndex: 0,       // index of active ground station
   nextColorIndex: 0,
 };
 
@@ -46,6 +51,9 @@ export function loadState() {
     if (parsed.liveInterval) state.liveInterval = parsed.liveInterval;
     if (typeof parsed.liveEnabled === 'boolean') state.liveEnabled = parsed.liveEnabled;
     if (typeof parsed.coverageVisible === 'boolean') state.coverageVisible = parsed.coverageVisible;
+    if (typeof parsed.minElevation === 'number') state.minElevation = parsed.minElevation;
+    if (Array.isArray(parsed.groundStations) && parsed.groundStations.length > 0) state.groundStations = parsed.groundStations;
+    if (typeof parsed.activeGsIndex === 'number') state.activeGsIndex = parsed.activeGsIndex;
     if (typeof parsed.nextColorIndex === 'number') state.nextColorIndex = parsed.nextColorIndex;
 
     // Restore satellite list (just IDs, names, colors — TLE will be re-fetched)
@@ -82,6 +90,9 @@ function persistState() {
       liveInterval: state.liveInterval,
       liveEnabled: state.liveEnabled,
       coverageVisible: state.coverageVisible,
+      minElevation: state.minElevation,
+      groundStations: state.groundStations,
+      activeGsIndex: state.activeGsIndex,
       nextColorIndex: state.nextColorIndex,
       satellites: state.satellites.map(s => ({
         noradId: s.noradId,
@@ -131,6 +142,16 @@ export function updateSatellite(noradId, updates) {
  */
 export function findSatellite(noradId) {
   return state.satellites.find(s => s.noradId === noradId);
+}
+
+/**
+ * Get the currently active ground station.
+ */
+export function getActiveGs() {
+  const gs = state.groundStations;
+  if (!gs || gs.length === 0) return null;
+  const idx = Math.min(state.activeGsIndex || 0, gs.length - 1);
+  return gs[idx];
 }
 
 /**

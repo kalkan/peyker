@@ -128,17 +128,110 @@ export function renderExportControls(container, callbacks) {
 }
 
 /**
- * Render ground station controls (coverage circle toggle).
+ * Render ground station controls (list, add, coverage toggle).
  */
 export function renderGroundStationControls(container, callbacks) {
   const state = getState();
   container.innerHTML = '';
 
+  // Active GS selector
+  if (state.groundStations.length > 0) {
+    const selectRow = document.createElement('div');
+    selectRow.className = 'control-row';
+    const selectLabel = document.createElement('label');
+    selectLabel.textContent = 'Active GS';
+    const select = document.createElement('select');
+    select.style.cssText = 'background:#161b22;color:var(--text-primary);border:1px solid var(--border-glass);border-radius:var(--radius-xs);padding:4px 8px;font-size:12px;outline:none;flex:1;';
+    for (let i = 0; i < state.groundStations.length; i++) {
+      const gs = state.groundStations[i];
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${gs.name} (${gs.lat.toFixed(2)}°, ${gs.lon.toFixed(2)}°)`;
+      if (i === (state.activeGsIndex || 0)) opt.selected = true;
+      select.append(opt);
+    }
+    select.addEventListener('change', () => {
+      setState({ activeGsIndex: parseInt(select.value, 10) });
+      if (callbacks.onGsChanged) callbacks.onGsChanged();
+    });
+    selectRow.append(selectLabel, select);
+    container.append(selectRow);
+
+    // Remove button for non-default stations
+    const activeIdx = state.activeGsIndex || 0;
+    if (activeIdx > 0) {
+      const removeBtn = createButton('Remove Station', 'btn btn-danger btn-sm', () => {
+        const gs = [...state.groundStations];
+        gs.splice(activeIdx, 1);
+        setState({ groundStations: gs, activeGsIndex: 0 });
+        if (callbacks.onGsChanged) callbacks.onGsChanged();
+        renderGroundStationControls(container, callbacks);
+      });
+      removeBtn.style.marginBottom = '8px';
+      container.append(removeBtn);
+    }
+  }
+
+  // Add new GS form
+  const addSection = document.createElement('div');
+  addSection.style.cssText = 'margin-top:8px;';
+
+  const addToggle = document.createElement('button');
+  addToggle.className = 'btn btn-sm';
+  addToggle.textContent = '+ Add Station';
+  addToggle.style.marginBottom = '6px';
+  addToggle.addEventListener('click', () => {
+    addForm.style.display = addForm.style.display === 'none' ? 'block' : 'none';
+  });
+  addSection.append(addToggle);
+
+  const addForm = document.createElement('div');
+  addForm.style.display = 'none';
+
+  const nameInput = createSmallInput('Name', 'text', '');
+  const latInput = createSmallInput('Lat °', 'number', '');
+  const lonInput = createSmallInput('Lon °', 'number', '');
+  const altInput = createSmallInput('Alt m', 'number', '0');
+
+  const saveBtn = createButton('Save', 'btn btn-primary btn-sm', () => {
+    const name = nameInput.querySelector('input').value.trim();
+    const lat = parseFloat(latInput.querySelector('input').value);
+    const lon = parseFloat(lonInput.querySelector('input').value);
+    const alt = parseInt(altInput.querySelector('input').value, 10) || 0;
+    if (!name || isNaN(lat) || isNaN(lon)) return;
+    const gs = [...state.groundStations, { name, lat, lon, alt }];
+    setState({ groundStations: gs, activeGsIndex: gs.length - 1 });
+    if (callbacks.onGsChanged) callbacks.onGsChanged();
+    renderGroundStationControls(container, callbacks);
+  });
+
+  addForm.append(nameInput, latInput, lonInput, altInput, saveBtn);
+  addSection.append(addForm);
+  container.append(addSection);
+
+  // Coverage toggle
   const toggle = createToggleRow('Coverage circle (2500 km)', state.coverageVisible, (checked) => {
     setState({ coverageVisible: checked });
     callbacks.onCoverageToggle(checked);
   });
   container.append(toggle);
+}
+
+function createSmallInput(labelText, type, defaultValue) {
+  const row = document.createElement('div');
+  row.className = 'control-row';
+  row.style.marginBottom = '4px';
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  label.style.fontSize = '11px';
+  label.style.minWidth = '40px';
+  const input = document.createElement('input');
+  input.type = type;
+  input.value = defaultValue;
+  input.style.fontSize = '12px';
+  if (type === 'number') input.step = 'any';
+  row.append(label, input);
+  return row;
 }
 
 // --- Helpers ---

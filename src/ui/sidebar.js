@@ -4,6 +4,7 @@
  */
 
 import { PRESETS } from '../sat/presets.js';
+import { searchSatellitesByName } from '../sat/fetch.js';
 import { getState, setState } from './state.js';
 import { renderSatList } from './satellite-list.js';
 import { renderInfoPanel } from './info-panel.js';
@@ -50,11 +51,13 @@ export function buildSidebar(sidebar, callbacks) {
   content.append(createSection('Satellite Input', (body) => {
     const inputGroup = document.createElement('div');
     inputGroup.className = 'input-group';
+    inputGroup.style.position = 'relative';
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Enter NORAD ID...';
+    input.placeholder = 'NORAD ID or satellite name...';
     input.id = 'norad-input';
+    input.autocomplete = 'off';
 
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-primary';
@@ -62,16 +65,76 @@ export function buildSidebar(sidebar, callbacks) {
     addBtn.addEventListener('click', () => {
       const val = input.value.trim();
       if (val) {
-        callbacks.onAddSatellite(parseInt(val, 10));
+        const numVal = parseInt(val, 10);
+        if (!isNaN(numVal) && String(numVal) === val) {
+          callbacks.onAddSatellite(numVal);
+        } else {
+          // Treat as name — trigger search
+          triggerSearch(val);
+        }
         input.value = '';
+        hideDropdown();
+      }
+    });
+
+    // Search results dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'sat-search-dropdown';
+    dropdown.style.display = 'none';
+
+    let searchTimeout = null;
+
+    function hideDropdown() {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML = '';
+    }
+
+    async function triggerSearch(query) {
+      if (query.length < 2) { hideDropdown(); return; }
+      dropdown.innerHTML = '<div class="sat-search-item loading">Searching...</div>';
+      dropdown.style.display = 'block';
+      const results = await searchSatellitesByName(query);
+      dropdown.innerHTML = '';
+      if (results.length === 0) {
+        dropdown.innerHTML = '<div class="sat-search-item loading">No results</div>';
+        setTimeout(hideDropdown, 2000);
+        return;
+      }
+      for (const r of results.slice(0, 15)) {
+        const item = document.createElement('div');
+        item.className = 'sat-search-item';
+        item.innerHTML = `<span class="sat-search-name">${r.name}</span><span class="sat-search-id">#${r.noradId}</span>`;
+        item.addEventListener('click', () => {
+          callbacks.onAddSatellite(r.noradId, r.name);
+          input.value = '';
+          hideDropdown();
+        });
+        dropdown.append(item);
+      }
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      const val = input.value.trim();
+      // Only search if it's not a pure number
+      if (val && isNaN(parseInt(val, 10))) {
+        searchTimeout = setTimeout(() => triggerSearch(val), 400);
+      } else {
+        hideDropdown();
       }
     });
 
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addBtn.click();
+      if (e.key === 'Escape') hideDropdown();
     });
 
-    inputGroup.append(input, addBtn);
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!inputGroup.contains(e.target)) hideDropdown();
+    });
+
+    inputGroup.append(input, addBtn, dropdown);
     body.append(inputGroup);
 
     // Quick-add buttons

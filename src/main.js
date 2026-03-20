@@ -5,16 +5,16 @@
 
 import 'leaflet/dist/leaflet.css';
 import './styles/main.css';
-import { initMap, toggleCoverage } from './map/setup.js';
+import { initMap, toggleCoverage, refreshGsMarkers } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
 import { getOrCreateLayers, clearAllLayers } from './map/layers.js';
 import { fetchTLE, fetchGPJson, fetchSATCAT } from './sat/fetch.js';
 import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian } from './sat/propagate.js';
-import { getColor, GROUND_STATIONS } from './sat/presets.js';
+import { getColor } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
-import { getState, setState, loadState, updateSatellite, findSatellite, subscribe } from './ui/state.js';
+import { getState, setState, loadState, updateSatellite, findSatellite, subscribe, getActiveGs } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
 
 import L from 'leaflet';
@@ -68,7 +68,7 @@ function init() {
  */
 function getCallbacks() {
   return {
-    onAddSatellite: (noradId) => addSatellite(noradId),
+    onAddSatellite: (noradId, name) => addSatellite(noradId, name),
     onAddPreset: (preset) => addSatellite(preset.noradId, preset.name),
     onShowTrack: () => showSelectedDayTrack(),
     onShowToday: () => showToday(),
@@ -83,6 +83,12 @@ function getCallbacks() {
       startLiveUpdates();
     },
     onCoverageToggle: (visible) => toggleCoverage(visible),
+    onGsChanged: () => {
+      // Refresh passes and map when ground station changes
+      updateCountdownOverlay();
+      countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      refreshMapGsMarkers();
+    },
     onExportSelected: () => exportSelected(),
     onExportAll: () => exportAll(),
   };
@@ -293,6 +299,11 @@ function updateLivePositions() {
   }
 }
 
+function refreshMapGsMarkers() {
+  refreshGsMarkers();
+  updateSidebar(getCallbacks());
+}
+
 // ===== KML Export =====
 
 function exportSelected() {
@@ -355,12 +366,11 @@ function updateCountdownOverlay() {
   const state = getState();
   const sat = state.selectedSatId ? findSatellite(state.selectedSatId) : null;
 
-  if (!sat || !sat.satrec || GROUND_STATIONS.length === 0) {
+  const gs = getActiveGs();
+  if (!sat || !sat.satrec || !gs) {
     el.classList.remove('visible');
     return;
   }
-
-  const gs = GROUND_STATIONS[0];
   const now = Date.now();
 
   // Cache passes for 60s per satellite
