@@ -1298,6 +1298,95 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--text-muted);
 }
 
+/* ===== Overlap Pair Summary ===== */
+.overlap-pair-summary {
+  background: var(--bg-glass-deep);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.overlap-pair-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.overlap-pair-row {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.overlap-pair-row:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.overlap-pair-names {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+
+.overlap-pair-name {
+  white-space: nowrap;
+}
+
+.overlap-pair-x {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.overlap-pair-bar-wrap {
+  position: relative;
+  height: 22px;
+  background: var(--bg-glass);
+  border-radius: var(--radius-xs);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.overlap-pair-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  min-width: 24px;
+  transition: width 0.3s ease;
+}
+
+.overlap-pair-count {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.overlap-pair-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 /* ===== Status Bar ===== */
 .status-bar {
   padding: 8px 14px;

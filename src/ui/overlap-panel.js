@@ -119,6 +119,73 @@ function buildOverlapUI(container, overlaps, sats) {
     return;
   }
 
+  // === Pair summary visualization ===
+  const pairMap = new Map();
+  for (const ov of overlaps) {
+    const idA = Math.min(ov.satA.noradId, ov.satB.noradId);
+    const idB = Math.max(ov.satA.noradId, ov.satB.noradId);
+    const key = `${idA}-${idB}`;
+    if (!pairMap.has(key)) {
+      pairMap.set(key, {
+        satA: ov.satA.noradId === idA ? ov.satA : ov.satB,
+        satB: ov.satA.noradId === idA ? ov.satB : ov.satA,
+        count: 0,
+        totalSec: 0,
+        maxElBest: 0,
+      });
+    }
+    const p = pairMap.get(key);
+    p.count++;
+    p.totalSec += ov.durationSec;
+    p.maxElBest = Math.max(p.maxElBest, Math.min(ov.maxElA, ov.maxElB));
+  }
+
+  const pairs = [...pairMap.values()].sort((a, b) => b.count - a.count);
+
+  const pairSection = document.createElement('div');
+  pairSection.className = 'overlap-pair-summary';
+
+  const pairTitle = document.createElement('div');
+  pairTitle.className = 'overlap-pair-title';
+  pairTitle.textContent = 'Pair Summary (14 days)';
+  pairSection.append(pairTitle);
+
+  for (const pair of pairs) {
+    const row = document.createElement('div');
+    row.className = 'overlap-pair-row';
+
+    // Bar width relative to max count
+    const maxCount = pairs[0].count;
+    const barPct = Math.max(8, (pair.count / maxCount) * 100);
+
+    const totalMin = Math.floor(pair.totalSec / 60);
+    const avgSec = Math.round(pair.totalSec / pair.count);
+    const avgMin = Math.floor(avgSec / 60);
+    const avgS = avgSec % 60;
+
+    row.innerHTML = `
+      <div class="overlap-pair-names">
+        <span class="overlap-chip" style="background:${pair.satA.color}"></span>
+        <span class="overlap-pair-name">${pair.satA.name}</span>
+        <span class="overlap-pair-x">&times;</span>
+        <span class="overlap-chip" style="background:${pair.satB.color}"></span>
+        <span class="overlap-pair-name">${pair.satB.name}</span>
+      </div>
+      <div class="overlap-pair-bar-wrap">
+        <div class="overlap-pair-bar" style="width:${barPct}%;background:linear-gradient(90deg,${pair.satA.color}44,${pair.satB.color}44)"></div>
+        <span class="overlap-pair-count">${pair.count}</span>
+      </div>
+      <div class="overlap-pair-meta">
+        <span title="Toplam süre">${totalMin}m total</span>
+        <span title="Ortalama süre">avg ${avgMin}m${avgS > 0 ? ` ${avgS}s` : ''}</span>
+        <span title="En iyi ortak elevasyon">best ${pair.maxElBest.toFixed(0)}°</span>
+      </div>
+    `;
+    pairSection.append(row);
+  }
+
+  container.append(pairSection);
+
   const now = Date.now();
 
   // Group by day
