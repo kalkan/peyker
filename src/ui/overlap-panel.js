@@ -4,9 +4,8 @@
  * visible from the ground station over the next 7 days.
  */
 
-import { getState } from './state.js';
+import { getState, getActiveGs } from './state.js';
 import { predictPasses } from '../sat/propagate.js';
-import { GROUND_STATIONS } from '../sat/presets.js';
 
 // Cache: { key, overlaps, computedAt }
 let overlapCache = null;
@@ -26,12 +25,11 @@ export function renderOverlapPanel(container) {
     return;
   }
 
-  if (GROUND_STATIONS.length === 0) {
+  const gs = getActiveGs();
+  if (!gs) {
     container.innerHTML = '<div class="empty-state">No ground station configured</div>';
     return;
   }
-
-  const gs = GROUND_STATIONS[0];
   const now = Date.now();
   const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',');
 
@@ -44,7 +42,7 @@ export function renderOverlapPanel(container) {
   requestAnimationFrame(() => {
     const allPasses = [];
     for (const sat of satsWithTle) {
-      const passes = predictPasses(sat.satrec, gs, 7);
+      const passes = predictPasses(sat.satrec, gs, 14);
       for (const p of passes) {
         allPasses.push({ ...p, sat });
       }
@@ -116,7 +114,7 @@ function buildOverlapUI(container, overlaps, sats) {
   if (overlaps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No overlapping passes in the next 7 days';
+    empty.textContent = 'No overlapping passes in the next 14 days';
     container.append(empty);
     return;
   }
@@ -161,10 +159,48 @@ function buildOverlapUI(container, overlaps, sats) {
     }
   }
 
+  // CSV Download button
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'btn btn-sm csv-download-btn';
+  dlBtn.textContent = 'Download CSV';
+  dlBtn.addEventListener('click', () => downloadOverlapsCsv(overlaps));
+  container.append(dlBtn);
+
   const note = document.createElement('div');
   note.className = 'pass-note';
-  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} — times in TR (UTC+3)`;
+  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} (14 days) — times in TR (UTC+3)`;
   container.append(note);
+}
+
+function downloadOverlapsCsv(overlaps) {
+  const gs = getActiveGs();
+  const gsName = gs ? gs.name : 'Unknown';
+  const header = 'Ground Station,Date,Satellite A,Satellite B,Overlap Start (UTC+3),Overlap End (UTC+3),Duration (s),Max El A (deg),Max El B (deg),AOS A (UTC+3),LOS A (UTC+3),AOS B (UTC+3),LOS B (UTC+3)';
+  const rows = overlaps.map(ov => {
+    return [
+      `"${gsName}"`,
+      fmtDate(ov.start),
+      `"${ov.satA.name}"`,
+      `"${ov.satB.name}"`,
+      fmtTime(ov.start),
+      fmtTime(ov.end),
+      Math.round(ov.durationSec),
+      ov.maxElA.toFixed(1),
+      ov.maxElB.toFixed(1),
+      fmtTime(ov.passA.aos),
+      fmtTime(ov.passA.los),
+      fmtTime(ov.passB.aos),
+      fmtTime(ov.passB.los),
+    ].join(',');
+  });
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `overlaps_${gsName}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function groupByDay(items) {

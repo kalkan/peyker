@@ -377,7 +377,7 @@ function updateCountdownOverlay() {
   if (countdownPassCache.noradId !== sat.noradId || (now - countdownPassCache.computedAt) > 60000) {
     countdownPassCache = {
       noradId: sat.noradId,
-      passes: predictPasses(sat.satrec, gs, 7),
+      passes: predictPasses(sat.satrec, gs, 14),
       computedAt: now,
     };
   }

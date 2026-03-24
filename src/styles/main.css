@@ -1198,6 +1198,27 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   color: var(--text-primary);
 }
 
+/* ===== CSV Download Button ===== */
+.csv-download-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  padding: 7px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.csv-download-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ===== Pass Overlap Analysis ===== */
 .overlap-summary {
   margin-bottom: 8px;

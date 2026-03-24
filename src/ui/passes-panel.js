@@ -58,7 +58,7 @@ export function renderPassesPanel(container) {
   // Show loading then compute
   container.innerHTML = '<div class="pass-loading">Computing passes...</div>';
   requestAnimationFrame(() => {
-    const allPasses = predictPasses(sat.satrec, gs, 7);
+    const allPasses = predictPasses(sat.satrec, gs, 14);
     passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
     const minEl = state.minElevation || 0;
     const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
@@ -99,7 +99,7 @@ function buildPassUI(container, passes, satName) {
   container.append(filterRow);
 
   if (passes.length === 0) {
-    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'No passes in the next 7 days' }));
+    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'No passes in the next 14 days' }));
     return;
   }
 
@@ -181,9 +181,16 @@ function buildPassUI(container, passes, satName) {
     container.append(table);
   }
 
+  // CSV Download button
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'btn btn-sm csv-download-btn';
+  dlBtn.textContent = 'Download CSV';
+  dlBtn.addEventListener('click', () => downloadPassesCsv(passes, satName));
+  container.append(dlBtn);
+
   const note = document.createElement('div');
   note.className = 'pass-note';
-  note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} — times in TR (UTC+3)`;
+  note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} (14 days) — times in TR (UTC+3)`;
   container.append(note);
 }
 
@@ -447,6 +454,33 @@ function fmtDate(date) {
     timeZone: 'Europe/Istanbul',
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
+}
+
+function downloadPassesCsv(passes, satName) {
+  const gs = getActiveGs();
+  const gsName = gs ? gs.name : 'Unknown';
+  const header = 'Satellite,Ground Station,Date,AOS (UTC+3),TCA (UTC+3),LOS (UTC+3),Duration (s),Max Elevation (deg)';
+  const rows = passes.map(p => {
+    const durSec = Math.round((p.los - p.aos) / 1000);
+    return [
+      `"${satName}"`,
+      `"${gsName}"`,
+      fmtDate(p.aos),
+      fmtTime(p.aos),
+      fmtTime(p.tca),
+      fmtTime(p.los),
+      durSec,
+      p.maxEl.toFixed(1),
+    ].join(',');
+  });
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${satName.replace(/\s+/g, '_')}_passes_${gsName}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /**
