@@ -8,7 +8,7 @@ import './styles/main.css';
 import { initMap, toggleCoverage, refreshGsMarkers } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
-import { getOrCreateLayers, clearAllLayers } from './map/layers.js';
+import { clearAllLayers } from './map/layers.js';
 import { fetchTLE, fetchGPJson, fetchSATCAT } from './sat/fetch.js';
 import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian } from './sat/propagate.js';
 import { getColor } from './sat/presets.js';

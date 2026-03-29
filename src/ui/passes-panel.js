@@ -421,19 +421,6 @@ function getElClass(el) {
   return 'el-vlow';
 }
 
-function getCountdown(ms) {
-  const totalMin = Math.floor(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h > 24) {
-    const d = Math.floor(h / 24);
-    const rh = h % 24;
-    return `${d}d ${rh}h ${m}m`;
-  }
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
 function fmtDuration(pass) {
   const sec = (pass.los - pass.aos) / 1000;
   const m = Math.floor(sec / 60);

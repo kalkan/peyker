@@ -27,6 +27,7 @@ let gsControlsContainer = null;
 let passesContainer = null;
 let overlapContainer = null;
 let statusEl = null;
+let dropdownCloseHandler = null;
 
 /**
  * Build the sidebar DOM structure.
@@ -129,10 +130,12 @@ export function buildSidebar(sidebar, callbacks) {
       if (e.key === 'Escape') hideDropdown();
     });
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
+    // Close dropdown when clicking outside (remove old handler first)
+    if (dropdownCloseHandler) document.removeEventListener('click', dropdownCloseHandler);
+    dropdownCloseHandler = (e) => {
       if (!inputGroup.contains(e.target)) hideDropdown();
-    });
+    };
+    document.addEventListener('click', dropdownCloseHandler);
 
     inputGroup.append(input, addBtn, dropdown);
     body.append(inputGroup);

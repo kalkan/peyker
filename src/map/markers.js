@@ -3,7 +3,7 @@
  */
 
 import L from 'leaflet';
-import { getOrCreateLayers } from './layers.js';
+import { getOrCreateLayers, getAllSatLayers } from './layers.js';
 import { getMap } from './setup.js';
 
 /**
@@ -59,8 +59,9 @@ export function updateLiveMarker(noradId, name, lat, lon, alt, color, timestamp)
  * Remove live position marker for a satellite.
  */
 export function removeLiveMarker(noradId) {
-  const layers = getOrCreateLayers(noradId, '');
-  layers.marker.clearLayers();
+  const allLayers = getAllSatLayers();
+  const layers = allLayers.get(noradId);
+  if (layers) layers.marker.clearLayers();
 }
 
 /**

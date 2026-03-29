@@ -142,10 +142,12 @@ export async function searchSatellitesByName(query) {
     const data = await response.json();
     if (!Array.isArray(data) || data.length === 0) return [];
 
-    return data.map(rec => ({
-      name: rec.OBJECT_NAME || `SAT-${rec.NORAD_CAT_ID}`,
-      noradId: rec.NORAD_CAT_ID,
-    }));
+    return data
+      .filter(rec => rec.NORAD_CAT_ID != null)
+      .map(rec => ({
+        name: rec.OBJECT_NAME || `SAT-${rec.NORAD_CAT_ID}`,
+        noradId: rec.NORAD_CAT_ID,
+      }));
   } catch {
     return [];
   }
