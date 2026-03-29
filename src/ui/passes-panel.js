@@ -141,7 +141,7 @@ function buildPassUI(container, passes, satName) {
     table.className = 'pass-table';
 
     const thead = document.createElement('thead');
-    thead.innerHTML = '<tr><th>AOS</th><th>LOS</th><th>Dur.</th><th>Max El.</th></tr>';
+    thead.innerHTML = '<tr><th>AOS</th><th>LOS</th><th>Dur.</th><th>Max El.</th><th>AZ</th></tr>';
     table.append(thead);
 
     const tbody = document.createElement('tbody');
@@ -161,6 +161,7 @@ function buildPassUI(container, passes, satName) {
         <td>${fmtTime(p.los)}</td>
         <td>${fmtDuration(p)}</td>
         <td><span class="el-badge ${elClass}">${p.maxEl.toFixed(1)}°</span></td>
+        <td class="az-cell">${fmtAzShort(p.azAos)}→${fmtAzShort(p.azLos)}</td>
       `;
 
       // Click row to jump to that pass in card
@@ -262,17 +263,22 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
       <div class="next-pass-row">
         <span class="next-pass-label">AOS</span>
         <span class="next-pass-value">${fmtTime(pass.aos)}</span>
-        <span class="next-pass-date">${fmtDate(pass.aos)}</span>
+        <span class="next-pass-date">${fmtAz(pass.azAos)}</span>
       </div>
       <div class="next-pass-row">
         <span class="next-pass-label">TCA</span>
         <span class="next-pass-value">${fmtTime(pass.tca)}</span>
-        <span class="next-pass-date">${fmtDuration(pass)}</span>
+        <span class="next-pass-date">${fmtAz(pass.azTca)}</span>
       </div>
       <div class="next-pass-row">
         <span class="next-pass-label">LOS</span>
         <span class="next-pass-value">${fmtTime(pass.los)}</span>
-        <span class="next-pass-date">${fmtDate(pass.los)}</span>
+        <span class="next-pass-date">${fmtAz(pass.azLos)}</span>
+      </div>
+      <div class="next-pass-row next-pass-row-dur">
+        <span class="next-pass-label">Duration</span>
+        <span class="next-pass-value">${fmtDuration(pass)}</span>
+        <span class="next-pass-date">${fmtDate(pass.aos)}</span>
       </div>
     </div>
   `;
@@ -421,6 +427,22 @@ function getElClass(el) {
   return 'el-vlow';
 }
 
+function azToCompass(az) {
+  if (az == null) return '';
+  const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  return dirs[Math.round(az / 22.5) % 16];
+}
+
+function fmtAz(az) {
+  if (az == null) return '';
+  return `AZ ${az.toFixed(0)}° ${azToCompass(az)}`;
+}
+
+function fmtAzShort(az) {
+  if (az == null) return '?';
+  return `${az.toFixed(0)}°`;
+}
+
 function fmtDuration(pass) {
   const sec = (pass.los - pass.aos) / 1000;
   const m = Math.floor(sec / 60);
@@ -446,7 +468,7 @@ function fmtDate(date) {
 function downloadPassesCsv(passes, satName) {
   const gs = getActiveGs();
   const gsName = gs ? gs.name : 'Unknown';
-  const header = 'Satellite,Ground Station,Date,AOS (UTC+3),TCA (UTC+3),LOS (UTC+3),Duration (s),Max Elevation (deg)';
+  const header = 'Satellite,Ground Station,Date,AOS (UTC+3),TCA (UTC+3),LOS (UTC+3),Duration (s),Max Elevation (deg),AZ AOS (deg),AZ TCA (deg),AZ LOS (deg),AZ AOS Dir,AZ LOS Dir';
   const rows = passes.map(p => {
     const durSec = Math.round((p.los - p.aos) / 1000);
     return [
@@ -458,6 +480,11 @@ function downloadPassesCsv(passes, satName) {
       fmtTime(p.los),
       durSec,
       p.maxEl.toFixed(1),
+      p.azAos != null ? p.azAos.toFixed(1) : '',
+      p.azTca != null ? p.azTca.toFixed(1) : '',
+      p.azLos != null ? p.azLos.toFixed(1) : '',
+      azToCompass(p.azAos),
+      azToCompass(p.azLos),
     ].join(',');
   });
   const csv = [header, ...rows].join('\n');

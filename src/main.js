@@ -16,6 +16,7 @@ import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe, getActiveGs } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
+import { setRefreshTleCallback } from './ui/info-panel.js';
 
 import L from 'leaflet';
 
@@ -44,6 +45,30 @@ function init() {
 
   const rightPanel = document.getElementById('right-panel');
   buildRightPanel(rightPanel);
+
+  // Wire up TLE refresh callback
+  setRefreshTleCallback(async (noradId) => {
+    try {
+      // Clear localStorage cache for this satellite
+      try {
+        const cacheKey = 'sat-tle-cache';
+        const cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+        delete cache[noradId];
+        localStorage.setItem(cacheKey, JSON.stringify(cache));
+      } catch { /* ignore */ }
+
+      const tle = await fetchTLE(noradId);
+      const satrec = parseTLE(tle.line1, tle.line2);
+      updateSatellite(noradId, {
+        name: tle.name,
+        tle: { line1: tle.line1, line2: tle.line2 },
+        satrec,
+      });
+      showToast(`TLE refreshed for ${tle.name}`, 'success');
+    } catch (err) {
+      showToast(`TLE refresh failed: ${err.message}`, 'error');
+    }
+  });
 
   subscribe(() => {
     updateSatListAndInfo();
@@ -141,6 +166,9 @@ async function addSatellite(noradId, presetName) {
     setStatus(`TLE loaded for ${tle.name}`);
     fetchMetadata(noradId);
 
+    // Auto-show today's track for the newly added satellite
+    autoShowTrackForSat(noradId);
+
   } catch (err) {
     showToast(`Failed to fetch TLE for #${noradId}: ${err.message}`, 'error');
     setStatus('TLE fetch failed');
@@ -195,6 +223,23 @@ async function restoreSatellites() {
 }
 
 // ===== Track Rendering =====
+
+function autoShowTrackForSat(noradId) {
+  const sat = findSatellite(noradId);
+  if (!sat || !sat.satrec || !sat.visible) return;
+
+  const now = new Date();
+  const startTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+  const state = getState();
+
+  try {
+    const trackPoints = generateGroundTrack(sat.satrec, startTime, state.trackDuration, state.propagationStep);
+    updateSatellite(noradId, { trackPoints });
+    const segments = splitAtAntiMeridian(trackPoints);
+    renderTrack(noradId, sat.name, segments, sat.color, true);
+    setStatus(`Track rendered for ${sat.name}`);
+  } catch { /* silent */ }
+}
 
 function showSelectedDayTrack() {
   const state = getState();

@@ -868,6 +868,51 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   display: block;
 }
 
+.tle-age {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.tle-fresh {
+  color: var(--success);
+  background: rgba(76, 208, 128, 0.1);
+}
+
+.tle-stale {
+  color: var(--warning);
+  background: rgba(240, 176, 64, 0.1);
+}
+
+.tle-stale-warn {
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.tle-refresh-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.az-cell {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.next-pass-row-dur {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
 /* ===== Pass Predictions ===== */
 .pass-loading {
   font-size: 12px;

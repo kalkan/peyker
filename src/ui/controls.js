@@ -3,6 +3,7 @@
  */
 
 import { getState, setState } from './state.js';
+import { GS_PRESETS } from '../sat/presets.js';
 
 /**
  * Render the date/track controls section.
@@ -187,6 +188,46 @@ export function renderGroundStationControls(container, callbacks) {
 
   const addForm = document.createElement('div');
   addForm.style.display = 'none';
+
+  // Preset quick-add
+  const existingNames = new Set(state.groundStations.map(g => g.name));
+  const availablePresets = GS_PRESETS.filter(p => !existingNames.has(p.name));
+  if (availablePresets.length > 0) {
+    const presetRow = document.createElement('div');
+    presetRow.className = 'control-row';
+    presetRow.style.marginBottom = '6px';
+    const presetLabel = document.createElement('label');
+    presetLabel.textContent = 'Quick';
+    presetLabel.style.fontSize = '11px';
+    presetLabel.style.minWidth = '40px';
+    const presetSelect = document.createElement('select');
+    presetSelect.style.cssText = 'background:#161b22;color:var(--text-primary);border:1px solid var(--border-glass);border-radius:var(--radius-xs);padding:4px 8px;font-size:11px;outline:none;flex:1;';
+    const defOpt = document.createElement('option');
+    defOpt.value = '';
+    defOpt.textContent = 'Select preset...';
+    presetSelect.append(defOpt);
+    for (const p of availablePresets) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = `${p.name} (${p.lat.toFixed(2)}°, ${p.lon.toFixed(2)}°)`;
+      presetSelect.append(opt);
+    }
+    presetSelect.addEventListener('change', () => {
+      const preset = availablePresets.find(p => p.name === presetSelect.value);
+      if (!preset) return;
+      const gs = [...state.groundStations, { ...preset }];
+      setState({ groundStations: gs, activeGsIndex: gs.length - 1 });
+      if (callbacks.onGsChanged) callbacks.onGsChanged();
+      renderGroundStationControls(container, callbacks);
+    });
+    presetRow.append(presetLabel, presetSelect);
+    addForm.append(presetRow);
+
+    const orDiv = document.createElement('div');
+    orDiv.style.cssText = 'text-align:center;font-size:10px;color:var(--text-muted);margin:4px 0;';
+    orDiv.textContent = '— or enter manually —';
+    addForm.append(orDiv);
+  }
 
   const nameInput = createSmallInput('Name', 'text', '');
   const latInput = createSmallInput('Lat °', 'number', '');

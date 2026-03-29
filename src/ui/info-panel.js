@@ -6,6 +6,15 @@
 import { getState, findSatellite } from './state.js';
 import { getOrbitalElements, propagateAt } from '../sat/propagate.js';
 
+let refreshTleCallback = null;
+
+/**
+ * Set the callback for refreshing TLE data.
+ */
+export function setRefreshTleCallback(cb) {
+  refreshTleCallback = cb;
+}
+
 /**
  * Render satellite info panel into the given container.
  */
@@ -58,6 +67,24 @@ export function renderInfoPanel(container) {
     addRow(grid, 'Arg. Perigee', `${elems.argPerigee.toFixed(4)}°`, true);
     addRow(grid, 'Epoch', elems.epoch.toISOString().replace('T', ' ').slice(0, 19) + ' UTC', true);
 
+    // TLE age indicator
+    const ageMs = Date.now() - elems.epoch.getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    const ageLabel = ageDays < 1 ? `${Math.round(ageDays * 24)}h ago` : `${ageDays.toFixed(1)} days ago`;
+    const isStale = ageDays > 7;
+
+    const ageLabelEl = document.createElement('span');
+    ageLabelEl.className = 'label';
+    ageLabelEl.textContent = 'TLE Age';
+
+    const ageValueEl = document.createElement('span');
+    ageValueEl.className = 'value derived';
+    ageValueEl.innerHTML = `<span class="tle-age ${isStale ? 'tle-stale' : 'tle-fresh'}">${ageLabel}</span>`;
+    if (isStale) {
+      ageValueEl.innerHTML += ' <span class="tle-stale-warn">stale!</span>';
+    }
+    grid.append(ageLabelEl, ageValueEl);
+
     // Source label
     if (sat.metadata && sat.metadata.source) {
       addRow(grid, 'Data Source', sat.metadata.source);
@@ -67,6 +94,19 @@ export function renderInfoPanel(container) {
   }
 
   container.append(grid);
+
+  // Refresh TLE button
+  if (sat.satrec && refreshTleCallback) {
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'btn btn-sm tle-refresh-btn';
+    refreshBtn.textContent = 'Refresh TLE';
+    refreshBtn.addEventListener('click', () => {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing...';
+      refreshTleCallback(sat.noradId);
+    });
+    container.append(refreshBtn);
+  }
 
   // Collapsible TLE
   if (sat.tle) {

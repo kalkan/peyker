@@ -15,6 +15,21 @@ export const DEFAULT_GROUND_STATIONS = [
 ];
 
 /**
+ * Preset ground stations for quick add.
+ */
+export const GS_PRESETS = [
+  { name: 'İstanbul', lat: 41.0082, lon: 28.9784, alt: 40 },
+  { name: 'İzmir', lat: 38.4237, lon: 27.1428, alt: 30 },
+  { name: 'Antalya', lat: 36.8969, lon: 30.7133, alt: 30 },
+  { name: 'Trabzon', lat: 41.0027, lon: 39.7168, alt: 40 },
+  { name: 'ESA Darmstadt', lat: 49.8710, lon: 8.6225, alt: 144 },
+  { name: 'NASA Goldstone', lat: 35.4267, lon: -116.89, alt: 900 },
+  { name: 'NASA Canberra', lat: -35.4014, lon: 148.9817, alt: 680 },
+  { name: 'Svalbard SvalSat', lat: 78.2307, lon: 15.3976, alt: 500 },
+  { name: 'Kiruna ESRANGE', lat: 67.8558, lon: 20.9644, alt: 420 },
+];
+
+/**
  * Preset ground station markers (backwards compat — use getGroundStations() for runtime).
  */
 export const GROUND_STATIONS = DEFAULT_GROUND_STATIONS;

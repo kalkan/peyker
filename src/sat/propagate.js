@@ -187,11 +187,22 @@ export function predictPasses(satrec, gs, days, stepSeconds = 30) {
     } else if (inPass) {
       // Refine LOS with 1-second precision
       const los = refineTime(satrec, gs, t - stepMs, t, false);
+      // Compute azimuth at AOS, TCA, LOS
+      const aosDate = new Date(passStart);
+      const losDate = new Date(los);
+      const tcaDate = new Date(maxElTime);
+      const aosLook = getLookAngles(satrec, aosDate, gs);
+      const tcaLook = getLookAngles(satrec, tcaDate, gs);
+      const losLook = getLookAngles(satrec, losDate, gs);
+
       passes.push({
-        aos: new Date(passStart),
-        los: new Date(los),
-        tca: new Date(maxElTime),
+        aos: aosDate,
+        los: losDate,
+        tca: tcaDate,
         maxEl,
+        azAos: aosLook ? aosLook.azimuth : null,
+        azTca: tcaLook ? tcaLook.azimuth : null,
+        azLos: losLook ? losLook.azimuth : null,
       });
       inPass = false;
       maxEl = 0;
