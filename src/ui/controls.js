@@ -3,7 +3,7 @@
  */
 
 import { getState, setState } from './state.js';
-import { GS_PRESETS } from '../sat/presets.js';
+import { DEFAULT_GROUND_STATIONS } from '../sat/presets.js';
 
 /**
  * Render the date/track controls section.
@@ -135,41 +135,64 @@ export function renderGroundStationControls(container, callbacks) {
   const state = getState();
   container.innerHTML = '';
 
-  // Active GS selector
+  // Ground station list — click to select, click X to remove
   if (state.groundStations.length > 0) {
-    const selectRow = document.createElement('div');
-    selectRow.className = 'control-row';
-    const selectLabel = document.createElement('label');
-    selectLabel.textContent = 'Active GS';
-    const select = document.createElement('select');
-    select.style.cssText = 'background:#161b22;color:var(--text-primary);border:1px solid var(--border-glass);border-radius:var(--radius-xs);padding:4px 8px;font-size:12px;outline:none;flex:1;';
+    const list = document.createElement('div');
+    list.className = 'gs-list';
+
     for (let i = 0; i < state.groundStations.length; i++) {
       const gs = state.groundStations[i];
-      const opt = document.createElement('option');
-      opt.value = i;
-      opt.textContent = `${gs.name} (${gs.lat.toFixed(2)}°, ${gs.lon.toFixed(2)}°)`;
-      if (i === (state.activeGsIndex || 0)) opt.selected = true;
-      select.append(opt);
-    }
-    select.addEventListener('change', () => {
-      setState({ activeGsIndex: parseInt(select.value, 10) });
-      if (callbacks.onGsChanged) callbacks.onGsChanged();
-    });
-    selectRow.append(selectLabel, select);
-    container.append(selectRow);
+      const isActive = i === (state.activeGsIndex || 0);
+      const isDefault = i === 0 && DEFAULT_GROUND_STATIONS.some(
+        d => d.name === gs.name && d.lat === gs.lat && d.lon === gs.lon
+      );
 
-    // Remove button for non-default stations
-    const activeIdx = state.activeGsIndex || 0;
-    if (activeIdx > 0) {
-      const removeBtn = createButton('Remove Station', 'btn btn-danger btn-sm', () => {
-        const gs = [...state.groundStations];
-        gs.splice(activeIdx, 1);
-        setState({ groundStations: gs, activeGsIndex: 0 });
+      const item = document.createElement('div');
+      item.className = 'gs-item' + (isActive ? ' active' : '');
+      item.title = isDefault ? gs.name : `Click to select, ✕ to remove`;
+
+      const info = document.createElement('span');
+      info.className = 'gs-item-info';
+      info.textContent = `${gs.name} (${gs.lat.toFixed(2)}°, ${gs.lon.toFixed(2)}°)`;
+      info.addEventListener('click', () => {
+        setState({ activeGsIndex: i });
         if (callbacks.onGsChanged) callbacks.onGsChanged();
         renderGroundStationControls(container, callbacks);
       });
-      removeBtn.style.marginBottom = '8px';
-      container.append(removeBtn);
+      item.append(info);
+
+      // Remove button for non-default stations
+      if (!isDefault) {
+        const removeX = document.createElement('span');
+        removeX.className = 'gs-item-remove';
+        removeX.textContent = '✕';
+        removeX.title = 'Remove station';
+        removeX.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const gsList = [...state.groundStations];
+          gsList.splice(i, 1);
+          const newIdx = state.activeGsIndex >= i ? Math.max(0, (state.activeGsIndex || 0) - 1) : (state.activeGsIndex || 0);
+          setState({ groundStations: gsList, activeGsIndex: newIdx });
+          if (callbacks.onGsChanged) callbacks.onGsChanged();
+          renderGroundStationControls(container, callbacks);
+        });
+        item.append(removeX);
+      }
+
+      list.append(item);
+    }
+    container.append(list);
+
+    // Reset button — only show if there are non-default stations
+    const hasCustom = state.groundStations.length > DEFAULT_GROUND_STATIONS.length;
+    if (hasCustom) {
+      const resetBtn = createButton('Clear Added Stations', 'btn btn-danger btn-sm', () => {
+        setState({ groundStations: [...DEFAULT_GROUND_STATIONS], activeGsIndex: 0 });
+        if (callbacks.onGsChanged) callbacks.onGsChanged();
+        renderGroundStationControls(container, callbacks);
+      });
+      resetBtn.style.marginTop = '6px';
+      container.append(resetBtn);
     }
   }
 
@@ -188,46 +211,6 @@ export function renderGroundStationControls(container, callbacks) {
 
   const addForm = document.createElement('div');
   addForm.style.display = 'none';
-
-  // Preset quick-add
-  const existingNames = new Set(state.groundStations.map(g => g.name));
-  const availablePresets = GS_PRESETS.filter(p => !existingNames.has(p.name));
-  if (availablePresets.length > 0) {
-    const presetRow = document.createElement('div');
-    presetRow.className = 'control-row';
-    presetRow.style.marginBottom = '6px';
-    const presetLabel = document.createElement('label');
-    presetLabel.textContent = 'Quick';
-    presetLabel.style.fontSize = '11px';
-    presetLabel.style.minWidth = '40px';
-    const presetSelect = document.createElement('select');
-    presetSelect.style.cssText = 'background:#161b22;color:var(--text-primary);border:1px solid var(--border-glass);border-radius:var(--radius-xs);padding:4px 8px;font-size:11px;outline:none;flex:1;';
-    const defOpt = document.createElement('option');
-    defOpt.value = '';
-    defOpt.textContent = 'Select preset...';
-    presetSelect.append(defOpt);
-    for (const p of availablePresets) {
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = `${p.name} (${p.lat.toFixed(2)}°, ${p.lon.toFixed(2)}°)`;
-      presetSelect.append(opt);
-    }
-    presetSelect.addEventListener('change', () => {
-      const preset = availablePresets.find(p => p.name === presetSelect.value);
-      if (!preset) return;
-      const gs = [...state.groundStations, { ...preset }];
-      setState({ groundStations: gs, activeGsIndex: gs.length - 1 });
-      if (callbacks.onGsChanged) callbacks.onGsChanged();
-      renderGroundStationControls(container, callbacks);
-    });
-    presetRow.append(presetLabel, presetSelect);
-    addForm.append(presetRow);
-
-    const orDiv = document.createElement('div');
-    orDiv.style.cssText = 'text-align:center;font-size:10px;color:var(--text-muted);margin:4px 0;';
-    orDiv.textContent = '— or enter manually —';
-    addForm.append(orDiv);
-  }
 
   const nameInput = createSmallInput('Name', 'text', '');
   const latInput = createSmallInput('Lat °', 'number', '');

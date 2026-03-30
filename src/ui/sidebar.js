@@ -5,7 +5,7 @@
 
 import { PRESETS } from '../sat/presets.js';
 import { searchSatellitesByName } from '../sat/fetch.js';
-import { getState, setState } from './state.js';
+import { getState, setState, updateSatellite, findSatellite } from './state.js';
 import { renderSatList } from './satellite-list.js';
 import { renderInfoPanel } from './info-panel.js';
 import { renderPassesPanel } from './passes-panel.js';
@@ -24,6 +24,7 @@ let dateControlsContainer = null;
 let liveControlsContainer = null;
 let exportControlsContainer = null;
 let gsControlsContainer = null;
+let sensorFrameContainer = null;
 let passesContainer = null;
 let overlapContainer = null;
 let statusEl = null;
@@ -182,7 +183,13 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(gsControlsContainer);
   }));
 
-  // 6. Satellite Info Panel
+  // 6. Sensor Frame Controls
+  content.append(createSection('Sensor Frame', (body) => {
+    sensorFrameContainer = document.createElement('div');
+    body.append(sensorFrameContainer);
+  }));
+
+  // 7. Satellite Info Panel
   content.append(createSection('Satellite Information', (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
@@ -257,6 +264,7 @@ export function updateSidebar(callbacks) {
   if (liveControlsContainer) renderLiveControls(liveControlsContainer, callbacks);
   if (exportControlsContainer) renderExportControls(exportControlsContainer, callbacks);
   if (gsControlsContainer) renderGroundStationControls(gsControlsContainer, callbacks);
+  if (sensorFrameContainer) renderSensorFrameControls(sensorFrameContainer, callbacks);
   if (passesContainer) renderPassesPanel(passesContainer);
   if (overlapContainer) renderOverlapPanel(overlapContainer);
 }
@@ -264,9 +272,10 @@ export function updateSidebar(callbacks) {
 /**
  * Update just the satellite list and info panel.
  */
-export function updateSatListAndInfo() {
+export function updateSatListAndInfo(callbacks) {
   if (satListContainer) renderSatList(satListContainer);
   if (infoContainer) renderInfoPanel(infoContainer);
+  if (sensorFrameContainer && callbacks) renderSensorFrameControls(sensorFrameContainer, callbacks);
   if (passesContainer) renderPassesPanel(passesContainer);
   if (overlapContainer) renderOverlapPanel(overlapContainer);
 }
@@ -276,6 +285,100 @@ export function updateSatListAndInfo() {
  */
 export function setStatus(text) {
   if (statusEl) statusEl.textContent = text;
+}
+
+/**
+ * Render sensor frame controls for the selected satellite.
+ */
+function renderSensorFrameControls(container, callbacks) {
+  const state = getState();
+  container.innerHTML = '';
+
+  const sat = state.selectedSatId ? findSatellite(state.selectedSatId) : null;
+
+  if (!sat) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:11px;color:var(--text-muted);';
+    hint.textContent = 'Select a satellite to configure sensor frame.';
+    container.append(hint);
+    return;
+  }
+
+  const satLabel = document.createElement('div');
+  satLabel.style.cssText = 'font-size:12px;color:var(--accent);margin-bottom:6px;font-weight:500;';
+  satLabel.textContent = sat.name;
+  container.append(satLabel);
+
+  // Frame Width
+  const fwRow = createFrameInput('Frame W (km)', sat.frameWidth || 12, (val) => {
+    updateSatellite(sat.noradId, { frameWidth: val });
+    if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
+  });
+  container.append(fwRow);
+
+  // Frame Height
+  const fhRow = createFrameInput('Frame H (km)', sat.frameHeight || 12, (val) => {
+    updateSatellite(sat.noradId, { frameHeight: val });
+    if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
+  });
+  container.append(fhRow);
+
+  // Roll
+  const rollRow = createFrameInput('Roll (deg)', sat.rollDeg || 0, (val) => {
+    updateSatellite(sat.noradId, { rollDeg: val });
+    if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
+  }, -45, 45, 0.5);
+  container.append(rollRow);
+
+  // Pitch
+  const pitchRow = createFrameInput('Pitch (deg)', sat.pitchDeg || 0, (val) => {
+    updateSatellite(sat.noradId, { pitchDeg: val });
+    if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
+  }, -45, 45, 0.5);
+  container.append(pitchRow);
+
+  // Footprint visible toggle
+  const toggleRow = document.createElement('div');
+  toggleRow.className = 'toggle-row';
+  const toggleLabel = document.createElement('label');
+  toggleLabel.textContent = 'Show footprint';
+  const toggle = document.createElement('label');
+  toggle.className = 'toggle';
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.checked = state.footprintVisible;
+  toggleInput.addEventListener('change', () => {
+    setState({ footprintVisible: toggleInput.checked });
+    if (callbacks.onFootprintToggle) callbacks.onFootprintToggle(toggleInput.checked);
+  });
+  const slider = document.createElement('span');
+  slider.className = 'toggle-slider';
+  toggle.append(toggleInput, slider);
+  toggleRow.append(toggleLabel, toggle);
+  container.append(toggleRow);
+}
+
+function createFrameInput(labelText, value, onChange, min, max, step) {
+  const row = document.createElement('div');
+  row.className = 'control-row';
+  row.style.marginBottom = '4px';
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  label.style.fontSize = '11px';
+  label.style.minWidth = '80px';
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.value = value;
+  input.step = step || 1;
+  if (min !== undefined) input.min = min;
+  if (max !== undefined) input.max = max;
+  input.style.fontSize = '12px';
+  input.addEventListener('change', () => {
+    const val = parseFloat(input.value);
+    if (!isNaN(val)) onChange(val);
+  });
+  row.append(label, input);
+  return row;
 }
 
 // --- Helpers ---

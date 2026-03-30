@@ -907,10 +907,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   white-space: nowrap;
 }
 
-.next-pass-row-dur {
+.next-pass-footer {
+  display: flex;
+  justify-content: space-between;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 4px;
-  margin-top: 2px;
+  padding-top: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 /* ===== Pass Predictions ===== */
@@ -1664,4 +1669,56 @@ input[type="number"]::-webkit-outer-spin-button {
   :root {
     --sidebar-width: 100%;
   }
+}
+
+/* ===== Ground Station List ===== */
+.gs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.gs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-glass-deep);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.gs-item:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-glow);
+}
+
+.gs-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gs-item-info {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs-item-remove {
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 6px;
+  opacity: 0.5;
+  transition: opacity var(--transition);
+}
+
+.gs-item-remove:hover {
+  opacity: 1;
 }

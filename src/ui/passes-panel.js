@@ -275,11 +275,10 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
         <span class="next-pass-value">${fmtTime(pass.los)}</span>
         <span class="next-pass-date">${fmtAz(pass.azLos)}</span>
       </div>
-      <div class="next-pass-row next-pass-row-dur">
-        <span class="next-pass-label">Duration</span>
-        <span class="next-pass-value">${fmtDuration(pass)}</span>
-        <span class="next-pass-date">${fmtDate(pass.aos)}</span>
-      </div>
+    </div>
+    <div class="next-pass-footer">
+      <span>${fmtDuration(pass)}</span>
+      <span>${fmtDate(pass.aos)}</span>
     </div>
   `;
 

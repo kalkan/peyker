@@ -111,6 +111,103 @@ export function generateGroundTrack(satrec, startTime, durationHours, stepSecond
 }
 
 /**
+ * Compute the sensor footprint strip for a ground track.
+ *
+ * Uses frame dimensions (km) instead of FOV angles.
+ * Roll shifts the frame cross-track, pitch shifts it along-track.
+ *
+ * @param {Array} trackPoints - array of { lat, lon, alt, time }
+ * @param {number} frameWidthKm - sensor frame width in km (cross-track)
+ * @param {number} frameHeightKm - sensor frame height in km (along-track)
+ * @param {number} rollDeg - roll angle in degrees (positive = right)
+ * @param {number} pitchDeg - pitch angle in degrees (positive = forward)
+ * @returns {{ left: Array<[lat,lon]>, right: Array<[lat,lon]>, centers: Array<[lat,lon]> }}
+ */
+export function computeSwathPolygon(trackPoints, frameWidthKm, frameHeightKm, rollDeg, pitchDeg) {
+  if (trackPoints.length < 2) return { left: [], right: [], centers: [] };
+
+  const DEG2RAD = Math.PI / 180;
+  const EARTH_R = 6371; // km
+  const halfWidth = frameWidthKm / 2;
+
+  const left = [];
+  const right = [];
+  const centers = [];
+
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    const alt = p.alt; // km
+
+    // Compute heading from adjacent points
+    let heading;
+    if (i < trackPoints.length - 1) {
+      heading = bearing(p.lat, p.lon, trackPoints[i + 1].lat, trackPoints[i + 1].lon);
+    } else {
+      heading = bearing(trackPoints[i - 1].lat, trackPoints[i - 1].lon, p.lat, p.lon);
+    }
+
+    const crossRight = heading + 90;
+    const crossLeft = heading - 90;
+
+    // Roll shift: cross-track displacement (km)
+    const rollShiftKm = alt * Math.tan(rollDeg * DEG2RAD);
+    // Pitch shift: along-track displacement (km)
+    const pitchShiftKm = alt * Math.tan(pitchDeg * DEG2RAD);
+
+    // Start from sub-satellite point, apply roll + pitch shift to get frame center
+    let cLat = p.lat, cLon = p.lon;
+    if (rollShiftKm !== 0) {
+      [cLat, cLon] = destPoint(cLat, cLon, rollShiftKm, crossRight, EARTH_R);
+    }
+    if (pitchShiftKm !== 0) {
+      [cLat, cLon] = destPoint(cLat, cLon, pitchShiftKm, heading, EARTH_R);
+    }
+
+    // Frame edges: half-width left and right from center
+    const leftPt = destPoint(cLat, cLon, halfWidth, crossLeft, EARTH_R);
+    const rightPt = destPoint(cLat, cLon, halfWidth, crossRight, EARTH_R);
+
+    left.push(leftPt);
+    right.push(rightPt);
+    centers.push([cLat, cLon]);
+  }
+
+  return { left, right, centers };
+}
+
+// Compute bearing between two lat/lon points (degrees)
+function bearing(lat1, lon1, lat2, lon2) {
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+  const dLon = (lon2 - lon1) * DEG2RAD;
+  const y = Math.sin(dLon) * Math.cos(lat2 * DEG2RAD);
+  const x = Math.cos(lat1 * DEG2RAD) * Math.sin(lat2 * DEG2RAD) -
+            Math.sin(lat1 * DEG2RAD) * Math.cos(lat2 * DEG2RAD) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * RAD2DEG) + 360) % 360;
+}
+
+// Destination point given start, distance (km), bearing (degrees), earth radius
+function destPoint(lat, lon, distKm, bearingDeg, earthR) {
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+  const angDist = distKm / earthR;
+  const brng = bearingDeg * DEG2RAD;
+  const lat1 = lat * DEG2RAD;
+  const lon1 = lon * DEG2RAD;
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angDist) +
+    Math.cos(lat1) * Math.sin(angDist) * Math.cos(brng)
+  );
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(brng) * Math.sin(angDist) * Math.cos(lat1),
+    Math.cos(angDist) - Math.sin(lat1) * Math.sin(lat2)
+  );
+
+  return [lat2 * RAD2DEG, ((lon2 * RAD2DEG) + 540) % 360 - 180];
+}
+
+/**
  * Compute look angles (elevation, azimuth, range) from a ground station to a satellite.
  *
  * @param {Object} satrec - satellite.js satrec object

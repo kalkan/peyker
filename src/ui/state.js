@@ -21,6 +21,7 @@ const defaultState = {
   minElevation: 0,        // minimum elevation filter for passes (degrees)
   groundStations: [...DEFAULT_GROUND_STATIONS],
   activeGsIndex: 0,       // index of active ground station
+  footprintVisible: true,  // show footprint strip on map
   nextColorIndex: 0,
 };
 
@@ -53,6 +54,7 @@ export function loadState() {
     if (typeof parsed.coverageVisible === 'boolean') state.coverageVisible = parsed.coverageVisible;
     if (typeof parsed.minElevation === 'number') state.minElevation = parsed.minElevation;
     if (Array.isArray(parsed.groundStations) && parsed.groundStations.length > 0) state.groundStations = parsed.groundStations;
+    if (typeof parsed.footprintVisible === 'boolean') state.footprintVisible = parsed.footprintVisible;
     if (typeof parsed.activeGsIndex === 'number') state.activeGsIndex = parsed.activeGsIndex;
     if (typeof parsed.nextColorIndex === 'number') state.nextColorIndex = parsed.nextColorIndex;
 
@@ -65,6 +67,10 @@ export function loadState() {
         colorIndex: s.colorIndex,
         visible: s.visible !== false,
         showLive: s.showLive || false,
+        frameWidth: s.frameWidth || 12,
+        frameHeight: s.frameHeight || 12,
+        rollDeg: s.rollDeg || 0,
+        pitchDeg: s.pitchDeg || 0,
         tle: null,
         satrec: null,
         metadata: null,
@@ -94,6 +100,7 @@ function persistState() {
       groundStations: state.groundStations,
       activeGsIndex: state.activeGsIndex,
       nextColorIndex: state.nextColorIndex,
+      footprintVisible: state.footprintVisible,
       satellites: state.satellites.map(s => ({
         noradId: s.noradId,
         name: s.name,
@@ -101,6 +108,10 @@ function persistState() {
         colorIndex: s.colorIndex,
         visible: s.visible,
         showLive: s.showLive,
+        frameWidth: s.frameWidth,
+        frameHeight: s.frameHeight,
+        rollDeg: s.rollDeg,
+        pitchDeg: s.pitchDeg,
       })),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));

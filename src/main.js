@@ -5,12 +5,12 @@
 
 import 'leaflet/dist/leaflet.css';
 import './styles/main.css';
-import { initMap, toggleCoverage, refreshGsMarkers } from './map/setup.js';
+import { initMap, toggleCoverage, refreshGsMarkers, getMap } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
 import { clearAllLayers } from './map/layers.js';
 import { fetchTLE, fetchGPJson, fetchSATCAT } from './sat/fetch.js';
-import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian } from './sat/propagate.js';
+import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian, computeSwathPolygon } from './sat/propagate.js';
 import { getColor } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
@@ -34,6 +34,7 @@ L.Icon.Default.mergeOptions({
 let liveTimer = null;
 let countdownOverlayTimer = null;
 let countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+const footprintLayers = new Map(); // noradId -> L.layerGroup
 
 // ===== Initialize =====
 function init() {
@@ -71,7 +72,7 @@ function init() {
   });
 
   subscribe(() => {
-    updateSatListAndInfo();
+    updateSatListAndInfo(getCallbacks());
   });
 
   updateSidebar(getCallbacks());
@@ -116,6 +117,20 @@ function getCallbacks() {
     },
     onExportSelected: () => exportSelected(),
     onExportAll: () => exportAll(),
+    onFootprintChange: (noradId) => renderFootprint(noradId),
+    onFootprintToggle: (visible) => {
+      if (visible) {
+        // Re-render all footprints
+        const s = getState();
+        for (const sat of s.satellites) {
+          if (sat.visible && sat.trackPoints && sat.trackPoints.length > 0) {
+            renderFootprint(sat.noradId);
+          }
+        }
+      } else {
+        clearAllFootprints();
+      }
+    },
   };
 }
 
@@ -139,6 +154,10 @@ async function addSatellite(noradId, presetName) {
     colorIndex,
     visible: true,
     showLive: false,
+    frameWidth: 12,
+    frameHeight: 12,
+    rollDeg: 0,
+    pitchDeg: 0,
     tle: null,
     satrec: null,
     metadata: null,
@@ -237,6 +256,7 @@ function autoShowTrackForSat(noradId) {
     updateSatellite(noradId, { trackPoints });
     const segments = splitAtAntiMeridian(trackPoints);
     renderTrack(noradId, sat.name, segments, sat.color, true);
+    renderFootprint(noradId);
     setStatus(`Track rendered for ${sat.name}`);
   } catch { /* silent */ }
 }
@@ -266,6 +286,7 @@ function showSelectedDayTrack() {
       const segments = splitAtAntiMeridian(trackPoints);
       const fitBounds = visibleSats.indexOf(sat) === visibleSats.length - 1;
       renderTrack(sat.noradId, sat.name, segments, sat.color, fitBounds);
+      renderFootprint(sat.noradId);
     } catch (err) {
       showToast(`Propagation error for ${sat.name}: ${err.message}`, 'error');
     }
@@ -284,11 +305,76 @@ function showToday() {
 
 function clearTracks() {
   clearAllLayers();
+  clearAllFootprints();
   const state = getState();
   for (const sat of state.satellites) {
     updateSatellite(sat.noradId, { trackPoints: [] });
   }
   setStatus('Tracks cleared');
+}
+
+// ===== Footprint Rendering =====
+
+function renderFootprint(noradId) {
+  const state = getState();
+  if (!state.footprintVisible) return;
+
+  const sat = findSatellite(noradId);
+  if (!sat || !sat.trackPoints || sat.trackPoints.length < 2) return;
+
+  const frameW = sat.frameWidth || 12;
+  const frameH = sat.frameHeight || 12;
+  const roll = sat.rollDeg || 0;
+  const pitch = sat.pitchDeg || 0;
+
+  const swath = computeSwathPolygon(sat.trackPoints, frameW, frameH, roll, pitch);
+  if (swath.left.length === 0) return;
+
+  // Remove previous footprint for this satellite
+  removeFootprint(noradId);
+
+  const map = getMap();
+  const group = L.layerGroup();
+
+  // Build polygon strip: left edge forward + right edge reversed = closed polygon
+  const polygonCoords = [...swath.left, ...swath.right.slice().reverse()];
+  const poly = L.polygon(polygonCoords, {
+    color: sat.color,
+    weight: 1,
+    fillColor: sat.color,
+    fillOpacity: 0.12,
+    dashArray: '4 3',
+  });
+  group.addLayer(poly);
+
+  // Center line (shifted track)
+  if (roll !== 0 || pitch !== 0) {
+    const centerLine = L.polyline(swath.centers, {
+      color: sat.color,
+      weight: 1,
+      opacity: 0.4,
+      dashArray: '2 4',
+    });
+    group.addLayer(centerLine);
+  }
+
+  group.addTo(map);
+  footprintLayers.set(noradId, group);
+}
+
+function removeFootprint(noradId) {
+  const layer = footprintLayers.get(noradId);
+  if (layer) {
+    const map = getMap();
+    if (map && map.hasLayer(layer)) map.removeLayer(layer);
+    footprintLayers.delete(noradId);
+  }
+}
+
+function clearAllFootprints() {
+  for (const [noradId] of footprintLayers) {
+    removeFootprint(noradId);
+  }
 }
 
 // ===== Live Mode =====
