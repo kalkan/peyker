@@ -403,7 +403,11 @@ function renderSensorFrameControls(container, callbacks) {
 }
 
 function fmtTimeShort(date) {
-  return date.toISOString().slice(11, 16) + ' UTC';
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${d}.${m} ${hh}:${mm}`;
 }
 
 function createFrameInput(labelText, value, onChange, min, max, step) {

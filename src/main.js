@@ -440,9 +440,10 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   // Time label popup
   const tp = sat.trackPoints[idx];
   const timeStr = tp.time.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km`, {
-    permanent: false,
+  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}° Pitch: ${pitch}°`, {
+    permanent: true,
     direction: 'top',
+    className: 'sensor-cursor-tooltip',
   });
 
   group.addTo(map);

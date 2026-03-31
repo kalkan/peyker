@@ -1828,3 +1828,18 @@ input[type="number"]::-webkit-outer-spin-button {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
+
+.sensor-cursor-tooltip {
+  background: rgba(10, 14, 22, 0.85) !important;
+  border: 1px solid var(--border-glass) !important;
+  border-radius: var(--radius-xs) !important;
+  color: var(--text-primary) !important;
+  font-size: 11px !important;
+  font-family: var(--font-mono) !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+
+.sensor-cursor-tooltip::before {
+  border-top-color: rgba(10, 14, 22, 0.85) !important;
+}
