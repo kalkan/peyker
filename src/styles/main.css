@@ -434,6 +434,54 @@ html, body {
   margin-bottom: 12px;
 }
 
+/* Collapsible section titles */
+.section-title-collapsible {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  padding: 2px 0;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition);
+}
+
+.section-title-collapsible:hover {
+  color: var(--text-secondary);
+}
+
+.section-chevron {
+  font-size: 10px;
+  transition: transform 0.25s ease;
+  opacity: 0.6;
+}
+
+.sidebar-section.collapsed .section-chevron {
+  transform: rotate(-90deg);
+}
+
+.sidebar-section.collapsed .section-title {
+  margin-bottom: 0;
+}
+
+/* Collapsible body */
+.sidebar-section .section-body {
+  overflow: hidden;
+  max-height: 1000px;
+  transition: max-height 0.3s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+
+.sidebar-section.collapsed .section-body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-section.collapsed {
+  padding-bottom: 8px;
+}
+
 /* ===== Input Fields — Glass Inset ===== */
 .input-group {
   display: flex;

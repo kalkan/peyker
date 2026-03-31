@@ -49,8 +49,8 @@ export function buildSidebar(sidebar, callbacks) {
   const content = document.createElement('div');
   content.className = 'sidebar-content';
 
-  // 1. Satellite Input Section
-  content.append(createSection('Satellite Input', (body) => {
+  // 1. Satellite Input Section (always open)
+  content.append(createSection('Satellite Input', false, (body) => {
     const inputGroup = document.createElement('div');
     inputGroup.className = 'input-group';
     inputGroup.style.position = 'relative';
@@ -159,38 +159,38 @@ export function buildSidebar(sidebar, callbacks) {
     body.append(satListContainer);
   }));
 
-  // 2. Date & Track Controls
-  content.append(createSection('Date & Track Controls', (body) => {
+  // 2. Date & Track Controls (always open)
+  content.append(createSection('Date & Track Controls', false, (body) => {
     dateControlsContainer = document.createElement('div');
     body.append(dateControlsContainer);
   }));
 
-  // 3. Live Mode
-  content.append(createSection('Live Mode', (body) => {
+  // 3. Live Mode (collapsed by default)
+  content.append(createSection('Live Mode', true, (body) => {
     liveControlsContainer = document.createElement('div');
     body.append(liveControlsContainer);
   }));
 
-  // 4. KML Export
-  content.append(createSection('KML Export', (body) => {
+  // 4. KML Export (collapsed by default)
+  content.append(createSection('KML Export', true, (body) => {
     exportControlsContainer = document.createElement('div');
     body.append(exportControlsContainer);
   }));
 
-  // 5. Ground Station Controls
-  content.append(createSection('Ground Station', (body) => {
+  // 5. Ground Station Controls (collapsed by default)
+  content.append(createSection('Ground Station', true, (body) => {
     gsControlsContainer = document.createElement('div');
     body.append(gsControlsContainer);
   }));
 
-  // 6. Sensor Frame Controls
-  content.append(createSection('Sensor Frame', (body) => {
+  // 6. Sensor Frame Controls (always open)
+  content.append(createSection('Sensor Frame', false, (body) => {
     sensorFrameContainer = document.createElement('div');
     body.append(sensorFrameContainer);
   }));
 
-  // 7. Satellite Info Panel
-  content.append(createSection('Satellite Information', (body) => {
+  // 7. Satellite Info Panel (collapsed by default)
+  content.append(createSection('Satellite Information', true, (body) => {
     infoContainer = document.createElement('div');
     body.append(infoContainer);
   }));
@@ -240,13 +240,13 @@ export function buildRightPanel(panel) {
   content.className = 'sidebar-content';
 
   // 1. Upcoming Passes
-  content.append(createSection('Upcoming Passes', (body) => {
+  content.append(createSection('Upcoming Passes', false, (body) => {
     passesContainer = document.createElement('div');
     body.append(passesContainer);
   }));
 
   // 2. Pass Overlap Analysis
-  content.append(createSection('Pass Overlap Analysis', (body) => {
+  content.append(createSection('Pass Overlap Analysis', false, (body) => {
     overlapContainer = document.createElement('div');
     body.append(overlapContainer);
   }));
@@ -587,16 +587,36 @@ function createSliderInput(labelText, value, min, max, step, onChange) {
 
 // --- Helpers ---
 
-function createSection(title, buildBody) {
+function createSection(title, collapsible, buildBody) {
   const section = document.createElement('div');
   section.className = 'sidebar-section';
 
   const titleEl = document.createElement('div');
   titleEl.className = 'section-title';
-  titleEl.textContent = title;
+
+  if (collapsible) {
+    section.classList.add('collapsible', 'collapsed');
+    titleEl.classList.add('section-title-collapsible');
+
+    const chevron = document.createElement('span');
+    chevron.className = 'section-chevron';
+    chevron.innerHTML = '&#9662;'; // ▾
+
+    const titleText = document.createElement('span');
+    titleText.textContent = title;
+    titleEl.append(titleText, chevron);
+
+    titleEl.addEventListener('click', () => {
+      section.classList.toggle('collapsed');
+    });
+  } else {
+    titleEl.textContent = title;
+  }
+
   section.append(titleEl);
 
   const body = document.createElement('div');
+  body.className = 'section-body';
   buildBody(body);
   section.append(body);
 
