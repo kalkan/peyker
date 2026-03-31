@@ -374,13 +374,6 @@ function renderSensorFrameControls(container, callbacks) {
   });
   container.append(rollRow);
 
-  // --- Pitch Slider + Input ---
-  const pitchRow = createSliderInput('Pitch (deg)', sat.pitchDeg || 0, -45, 45, 0.5, (val) => {
-    updateSatellite(sat.noradId, { pitchDeg: val });
-    if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
-  });
-  container.append(pitchRow);
-
   // --- Footprint visible toggle ---
   const toggleRow = document.createElement('div');
   toggleRow.className = 'toggle-row';

@@ -357,7 +357,7 @@ function renderFootprint(noradId) {
   group.addLayer(poly);
 
   // Center line (shifted track)
-  if (roll !== 0 || pitch !== 0) {
+  if (roll !== 0) {
     const centerLine = L.polyline(swath.centers, {
       color: sat.color,
       weight: 1,
@@ -440,7 +440,7 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   // Time label popup
   const tp = sat.trackPoints[idx];
   const timeStr = tp.time.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}° Pitch: ${pitch}°`, {
+  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}°`, {
     permanent: true,
     direction: 'top',
     className: 'sensor-cursor-tooltip',
