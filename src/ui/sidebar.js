@@ -314,24 +314,38 @@ function renderSensorFrameControls(container, callbacks) {
     const timeSection = document.createElement('div');
     timeSection.className = 'sensor-time-section';
 
-    const timeLabel = document.createElement('div');
-    timeLabel.className = 'sensor-time-label';
     const startT = sat.trackPoints[0].time;
     const endT = sat.trackPoints[sat.trackPoints.length - 1].time;
-    timeLabel.textContent = fmtTimeShort(startT);
 
+    // Manual time input
+    const timeInputRow = document.createElement('div');
+    timeInputRow.className = 'sensor-time-input-row';
+    const timeInputLabel = document.createElement('label');
+    timeInputLabel.textContent = 'Time (UTC)';
+    timeInputLabel.className = 'sensor-time-input-label';
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'sensor-time-input';
+    timeInput.step = 60;
+    const curIdx = sat._timeCursorIndex || 0;
+    const curPt = sat.trackPoints[curIdx];
+    if (curPt) {
+      timeInput.value = curPt.time.toISOString().slice(11, 16);
+    }
+    timeInputRow.append(timeInputLabel, timeInput);
+    timeSection.append(timeInputRow);
+
+    // Slider row with start/end labels
     const timeSlider = document.createElement('input');
     timeSlider.type = 'range';
     timeSlider.className = 'sensor-slider';
     timeSlider.min = 0;
     timeSlider.max = sat.trackPoints.length - 1;
-    timeSlider.value = sat._timeCursorIndex || 0;
+    timeSlider.value = curIdx;
     timeSlider.step = 1;
 
     const timeValue = document.createElement('div');
     timeValue.className = 'sensor-time-value';
-    const curIdx = sat._timeCursorIndex || 0;
-    const curPt = sat.trackPoints[curIdx];
     timeValue.textContent = curPt ? fmtTimeShort(curPt.time) : '';
 
     timeSlider.addEventListener('input', () => {
@@ -339,17 +353,42 @@ function renderSensorFrameControls(container, callbacks) {
       const tp = sat.trackPoints[idx];
       if (tp) {
         timeValue.textContent = fmtTimeShort(tp.time);
+        timeInput.value = tp.time.toISOString().slice(11, 16);
         sat._timeCursorIndex = idx;
         if (callbacks.onTimeCursor) callbacks.onTimeCursor(sat.noradId, idx);
       }
     });
 
+    // Manual time input → find closest track point
+    timeInput.addEventListener('change', () => {
+      const [hh, mm] = timeInput.value.split(':').map(Number);
+      if (isNaN(hh) || isNaN(mm)) return;
+      // Find closest track point to this HH:MM
+      let bestIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < sat.trackPoints.length; i++) {
+        const t = sat.trackPoints[i].time;
+        const tMin = t.getUTCHours() * 60 + t.getUTCMinutes();
+        const inputMin = hh * 60 + mm;
+        const diff = Math.abs(tMin - inputMin);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      timeSlider.value = bestIdx;
+      const tp = sat.trackPoints[bestIdx];
+      timeValue.textContent = fmtTimeShort(tp.time);
+      sat._timeCursorIndex = bestIdx;
+      if (callbacks.onTimeCursor) callbacks.onTimeCursor(sat.noradId, bestIdx);
+    });
+
     const timeRow = document.createElement('div');
     timeRow.className = 'sensor-time-row';
+    const startLabel = document.createElement('div');
+    startLabel.className = 'sensor-time-label';
+    startLabel.textContent = fmtTimeShort(startT);
     const endLabel = document.createElement('div');
     endLabel.className = 'sensor-time-label';
     endLabel.textContent = fmtTimeShort(endT);
-    timeRow.append(timeLabel, timeSlider, endLabel);
+    timeRow.append(startLabel, timeSlider, endLabel);
     timeSection.append(timeRow, timeValue);
     container.append(timeSection);
   }
