@@ -1722,3 +1722,109 @@ input[type="number"]::-webkit-outer-spin-button {
 .gs-item-remove:hover {
   opacity: 1;
 }
+
+/* ===== Sensor Frame Controls ===== */
+.sensor-time-section {
+  margin-bottom: 10px;
+}
+
+.sensor-time-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sensor-time-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 52px;
+}
+
+.sensor-time-value {
+  text-align: center;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.sensor-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--bg-glass-deep);
+  border: 1px solid var(--border-glass);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.sensor-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(255,255,255,0.3);
+  box-shadow: 0 0 6px rgba(93, 170, 255, 0.4);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+
+.sensor-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 12px rgba(93, 170, 255, 0.6);
+}
+
+.sensor-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(255,255,255,0.3);
+  box-shadow: 0 0 6px rgba(93, 170, 255, 0.4);
+  cursor: pointer;
+}
+
+.slider-input-group {
+  margin-bottom: 6px;
+}
+
+.slider-input-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+  display: block;
+}
+
+.slider-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-input-row .sensor-slider {
+  flex: 1;
+}
+
+.slider-num-input {
+  width: 58px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  text-align: center;
+  outline: none;
+}
+
+.slider-num-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}

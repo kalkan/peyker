@@ -175,6 +175,55 @@ export function computeSwathPolygon(trackPoints, frameWidthKm, frameHeightKm, ro
   return { left, right, centers };
 }
 
+/**
+ * Compute a single footprint rectangle at a specific track point index.
+ * Returns 4 corners of the rectangle [[lat,lon], ...] in order (for L.polygon).
+ */
+export function computeFootprintRect(trackPoints, index, frameWidthKm, frameHeightKm, rollDeg, pitchDeg) {
+  if (trackPoints.length < 2 || index < 0 || index >= trackPoints.length) return null;
+
+  const DEG2RAD = Math.PI / 180;
+  const EARTH_R = 6371;
+  const halfW = frameWidthKm / 2;
+  const halfH = frameHeightKm / 2;
+
+  const p = trackPoints[index];
+  const alt = p.alt;
+
+  // Compute heading
+  let heading;
+  if (index < trackPoints.length - 1) {
+    heading = bearing(p.lat, p.lon, trackPoints[index + 1].lat, trackPoints[index + 1].lon);
+  } else {
+    heading = bearing(trackPoints[index - 1].lat, trackPoints[index - 1].lon, p.lat, p.lon);
+  }
+
+  const crossRight = heading + 90;
+  const crossLeft = heading - 90;
+  const forward = heading;
+  const backward = (heading + 180) % 360;
+
+  // Roll/pitch shift to get frame center
+  const rollShiftKm = alt * Math.tan(rollDeg * DEG2RAD);
+  const pitchShiftKm = alt * Math.tan(pitchDeg * DEG2RAD);
+
+  let cLat = p.lat, cLon = p.lon;
+  if (rollShiftKm !== 0) {
+    [cLat, cLon] = destPoint(cLat, cLon, rollShiftKm, crossRight, EARTH_R);
+  }
+  if (pitchShiftKm !== 0) {
+    [cLat, cLon] = destPoint(cLat, cLon, pitchShiftKm, forward, EARTH_R);
+  }
+
+  // 4 corners: front-left, front-right, back-right, back-left
+  const fl = destPoint(...destPoint(cLat, cLon, halfH, forward, EARTH_R), halfW, crossLeft, EARTH_R);
+  const fr = destPoint(...destPoint(cLat, cLon, halfH, forward, EARTH_R), halfW, crossRight, EARTH_R);
+  const br = destPoint(...destPoint(cLat, cLon, halfH, backward, EARTH_R), halfW, crossRight, EARTH_R);
+  const bl = destPoint(...destPoint(cLat, cLon, halfH, backward, EARTH_R), halfW, crossLeft, EARTH_R);
+
+  return { corners: [fl, fr, br, bl], center: [cLat, cLon], subsat: [p.lat, p.lon] };
+}
+
 // Compute bearing between two lat/lon points (degrees)
 function bearing(lat1, lon1, lat2, lon2) {
   const DEG2RAD = Math.PI / 180;

@@ -150,18 +150,28 @@ function buildOverlapUI(container, overlaps, sats) {
   pairTitle.textContent = 'Pair Summary (14 days)';
   pairSection.append(pairTitle);
 
+  const maxCount = pairs[0].count;
+  const minCount = pairs[pairs.length - 1].count;
+
   for (const pair of pairs) {
     const row = document.createElement('div');
     row.className = 'overlap-pair-row';
 
     // Bar width relative to max count
-    const maxCount = pairs[0].count;
     const barPct = Math.max(8, (pair.count / maxCount) * 100);
+
+    // Heat color: interpolate from cool (low) to hot (high)
+    const t = maxCount === minCount ? 1 : (pair.count - minCount) / (maxCount - minCount);
+    const heatColor = heatMapColor(t);
+    const heatBg = heatColor.replace(')', ',0.08)').replace('rgb(', 'rgba(');
 
     const totalMin = Math.floor(pair.totalSec / 60);
     const avgSec = Math.round(pair.totalSec / pair.count);
     const avgMin = Math.floor(avgSec / 60);
     const avgS = avgSec % 60;
+
+    row.style.background = heatBg;
+    row.style.borderLeft = `3px solid ${heatColor}`;
 
     row.innerHTML = `
       <div class="overlap-pair-names">
@@ -172,7 +182,7 @@ function buildOverlapUI(container, overlaps, sats) {
         <span class="overlap-pair-name">${pair.satB.name}</span>
       </div>
       <div class="overlap-pair-bar-wrap">
-        <div class="overlap-pair-bar" style="width:${barPct}%;background:linear-gradient(90deg,${pair.satA.color}44,${pair.satB.color}44)"></div>
+        <div class="overlap-pair-bar" style="width:${barPct}%;background:${heatColor};opacity:0.3"></div>
         <span class="overlap-pair-count">${pair.count}</span>
       </div>
       <div class="overlap-pair-meta">
@@ -298,4 +308,28 @@ function fmtDate(date) {
     timeZone: 'Europe/Istanbul',
     day: '2-digit', month: '2-digit', year: 'numeric',
   });
+}
+
+/**
+ * Temperature-based color mapping: 0 (cool/blue) → 1 (hot/red)
+ * Steps: blue → cyan → green → yellow → orange → red
+ */
+function heatMapColor(t) {
+  // Clamp 0..1
+  const v = Math.max(0, Math.min(1, t));
+  let r, g, b;
+  if (v < 0.25) {
+    const s = v / 0.25;
+    r = 60;  g = 100 + s * 155; b = 255 - s * 55;
+  } else if (v < 0.5) {
+    const s = (v - 0.25) / 0.25;
+    r = 60 + s * 120;  g = 220 + s * 35; b = 80 - s * 40;
+  } else if (v < 0.75) {
+    const s = (v - 0.5) / 0.25;
+    r = 220 + s * 35; g = 220 - s * 80; b = 40 - s * 20;
+  } else {
+    const s = (v - 0.75) / 0.25;
+    r = 255; g = 140 - s * 100; b = 20 - s * 20;
+  }
+  return `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
 }

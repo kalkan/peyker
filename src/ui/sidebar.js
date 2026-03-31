@@ -305,39 +305,83 @@ function renderSensorFrameControls(container, callbacks) {
   }
 
   const satLabel = document.createElement('div');
-  satLabel.style.cssText = 'font-size:12px;color:var(--accent);margin-bottom:6px;font-weight:500;';
+  satLabel.style.cssText = 'font-size:12px;color:var(--accent);margin-bottom:8px;font-weight:500;';
   satLabel.textContent = sat.name;
   container.append(satLabel);
 
-  // Frame Width
+  // --- Time Slider ---
+  if (sat.trackPoints && sat.trackPoints.length > 1) {
+    const timeSection = document.createElement('div');
+    timeSection.className = 'sensor-time-section';
+
+    const timeLabel = document.createElement('div');
+    timeLabel.className = 'sensor-time-label';
+    const startT = sat.trackPoints[0].time;
+    const endT = sat.trackPoints[sat.trackPoints.length - 1].time;
+    timeLabel.textContent = fmtTimeShort(startT);
+
+    const timeSlider = document.createElement('input');
+    timeSlider.type = 'range';
+    timeSlider.className = 'sensor-slider';
+    timeSlider.min = 0;
+    timeSlider.max = sat.trackPoints.length - 1;
+    timeSlider.value = sat._timeCursorIndex || 0;
+    timeSlider.step = 1;
+
+    const timeValue = document.createElement('div');
+    timeValue.className = 'sensor-time-value';
+    const curIdx = sat._timeCursorIndex || 0;
+    const curPt = sat.trackPoints[curIdx];
+    timeValue.textContent = curPt ? fmtTimeShort(curPt.time) : '';
+
+    timeSlider.addEventListener('input', () => {
+      const idx = parseInt(timeSlider.value, 10);
+      const tp = sat.trackPoints[idx];
+      if (tp) {
+        timeValue.textContent = fmtTimeShort(tp.time);
+        sat._timeCursorIndex = idx;
+        if (callbacks.onTimeCursor) callbacks.onTimeCursor(sat.noradId, idx);
+      }
+    });
+
+    const timeRow = document.createElement('div');
+    timeRow.className = 'sensor-time-row';
+    const endLabel = document.createElement('div');
+    endLabel.className = 'sensor-time-label';
+    endLabel.textContent = fmtTimeShort(endT);
+    timeRow.append(timeLabel, timeSlider, endLabel);
+    timeSection.append(timeRow, timeValue);
+    container.append(timeSection);
+  }
+
+  // --- Frame Dimensions ---
   const fwRow = createFrameInput('Frame W (km)', sat.frameWidth || 12, (val) => {
     updateSatellite(sat.noradId, { frameWidth: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
-  });
+  }, 1, 200, 1);
   container.append(fwRow);
 
-  // Frame Height
   const fhRow = createFrameInput('Frame H (km)', sat.frameHeight || 12, (val) => {
     updateSatellite(sat.noradId, { frameHeight: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
-  });
+  }, 1, 200, 1);
   container.append(fhRow);
 
-  // Roll
-  const rollRow = createFrameInput('Roll (deg)', sat.rollDeg || 0, (val) => {
+  // --- Roll Slider + Input ---
+  const rollRow = createSliderInput('Roll (deg)', sat.rollDeg || 0, -45, 45, 0.5, (val) => {
     updateSatellite(sat.noradId, { rollDeg: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
-  }, -45, 45, 0.5);
+  });
   container.append(rollRow);
 
-  // Pitch
-  const pitchRow = createFrameInput('Pitch (deg)', sat.pitchDeg || 0, (val) => {
+  // --- Pitch Slider + Input ---
+  const pitchRow = createSliderInput('Pitch (deg)', sat.pitchDeg || 0, -45, 45, 0.5, (val) => {
     updateSatellite(sat.noradId, { pitchDeg: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
-  }, -45, 45, 0.5);
+  });
   container.append(pitchRow);
 
-  // Footprint visible toggle
+  // --- Footprint visible toggle ---
   const toggleRow = document.createElement('div');
   toggleRow.className = 'toggle-row';
   const toggleLabel = document.createElement('label');
@@ -356,6 +400,10 @@ function renderSensorFrameControls(container, callbacks) {
   toggle.append(toggleInput, slider);
   toggleRow.append(toggleLabel, toggle);
   container.append(toggleRow);
+}
+
+function fmtTimeShort(date) {
+  return date.toISOString().slice(11, 16) + ' UTC';
 }
 
 function createFrameInput(labelText, value, onChange, min, max, step) {
@@ -379,6 +427,54 @@ function createFrameInput(labelText, value, onChange, min, max, step) {
   });
   row.append(label, input);
   return row;
+}
+
+function createSliderInput(labelText, value, min, max, step, onChange) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'slider-input-group';
+
+  const label = document.createElement('label');
+  label.className = 'slider-input-label';
+  label.textContent = labelText;
+  wrapper.append(label);
+
+  const row = document.createElement('div');
+  row.className = 'slider-input-row';
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'sensor-slider';
+  slider.min = min;
+  slider.max = max;
+  slider.step = step;
+  slider.value = value;
+
+  const numInput = document.createElement('input');
+  numInput.type = 'number';
+  numInput.className = 'slider-num-input';
+  numInput.min = min;
+  numInput.max = max;
+  numInput.step = step;
+  numInput.value = value;
+
+  slider.addEventListener('input', () => {
+    const val = parseFloat(slider.value);
+    numInput.value = val;
+    onChange(val);
+  });
+
+  numInput.addEventListener('change', () => {
+    let val = parseFloat(numInput.value);
+    if (isNaN(val)) return;
+    val = Math.max(min, Math.min(max, val));
+    numInput.value = val;
+    slider.value = val;
+    onChange(val);
+  });
+
+  row.append(slider, numInput);
+  wrapper.append(row);
+  return wrapper;
 }
 
 // --- Helpers ---

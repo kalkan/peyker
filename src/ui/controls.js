@@ -153,7 +153,8 @@ export function renderGroundStationControls(container, callbacks) {
 
       const info = document.createElement('span');
       info.className = 'gs-item-info';
-      info.textContent = `${gs.name} (${gs.lat.toFixed(2)}°, ${gs.lon.toFixed(2)}°)`;
+      const elLabel = gs.minEl ? ` · ${gs.minEl}° el` : '';
+      info.textContent = `${gs.name} (${gs.lat.toFixed(2)}°, ${gs.lon.toFixed(2)}°)${elLabel}`;
       info.addEventListener('click', () => {
         setState({ activeGsIndex: i });
         if (callbacks.onGsChanged) callbacks.onGsChanged();
@@ -216,29 +217,48 @@ export function renderGroundStationControls(container, callbacks) {
   const latInput = createSmallInput('Lat °', 'number', '');
   const lonInput = createSmallInput('Lon °', 'number', '');
   const altInput = createSmallInput('Alt m', 'number', '0');
+  const elInput = createSmallInput('Min El °', 'number', '5');
 
   const saveBtn = createButton('Save', 'btn btn-primary btn-sm', () => {
     const name = nameInput.querySelector('input').value.trim();
     const lat = parseFloat(latInput.querySelector('input').value);
     const lon = parseFloat(lonInput.querySelector('input').value);
     const alt = parseInt(altInput.querySelector('input').value, 10) || 0;
+    const minEl = parseFloat(elInput.querySelector('input').value) || 5;
     if (!name || isNaN(lat) || isNaN(lon)) return;
-    const gs = [...state.groundStations, { name, lat, lon, alt }];
+    const gs = [...state.groundStations, { name, lat, lon, alt, minEl }];
     setState({ groundStations: gs, activeGsIndex: gs.length - 1 });
     if (callbacks.onGsChanged) callbacks.onGsChanged();
     renderGroundStationControls(container, callbacks);
   });
 
-  addForm.append(nameInput, latInput, lonInput, altInput, saveBtn);
+  addForm.append(nameInput, latInput, lonInput, altInput, elInput, saveBtn);
   addSection.append(addForm);
   container.append(addSection);
 
-  // Coverage toggle
-  const toggle = createToggleRow('Coverage circle (2500 km)', state.coverageVisible, (checked) => {
+  // Coverage toggle with computed radius
+  const activeGs = state.groundStations[state.activeGsIndex || 0];
+  const covEl = activeGs && activeGs.minEl ? activeGs.minEl : 5;
+  const covRadius = computeCoverageRadius(covEl);
+  const toggle = createToggleRow(`Coverage circle (${covRadius} km, ${covEl}° el)`, state.coverageVisible, (checked) => {
     setState({ coverageVisible: checked });
     callbacks.onCoverageToggle(checked);
   });
   container.append(toggle);
+}
+
+/**
+ * Compute coverage circle ground radius (km) for a given minimum elevation angle.
+ * Uses spherical Earth model with typical LEO altitude (550 km).
+ * central_angle = arccos(R*cos(el)/(R+h)) - el
+ * ground_distance = R * central_angle
+ */
+export function computeCoverageRadius(minElDeg, satAltKm = 550) {
+  const DEG2RAD = Math.PI / 180;
+  const R = 6371; // Earth radius km
+  const el = minElDeg * DEG2RAD;
+  const centralAngle = Math.acos((R * Math.cos(el)) / (R + satAltKm)) - el;
+  return Math.round(R * centralAngle);
 }
 
 function createSmallInput(labelText, type, defaultValue) {

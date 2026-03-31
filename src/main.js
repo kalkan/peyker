@@ -10,7 +10,7 @@ import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
 import { clearAllLayers } from './map/layers.js';
 import { fetchTLE, fetchGPJson, fetchSATCAT } from './sat/fetch.js';
-import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian, computeSwathPolygon } from './sat/propagate.js';
+import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian, computeSwathPolygon, computeFootprintRect } from './sat/propagate.js';
 import { getColor } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
@@ -117,7 +117,16 @@ function getCallbacks() {
     },
     onExportSelected: () => exportSelected(),
     onExportAll: () => exportAll(),
-    onFootprintChange: (noradId) => renderFootprint(noradId),
+    onFootprintChange: (noradId) => {
+      renderFootprint(noradId);
+      // Also update time cursor if active
+      const sat = findSatellite(noradId);
+      if (sat && sat._timeCursorIndex != null) {
+        renderTimeCursorFootprint(noradId, sat._timeCursorIndex);
+      }
+    },
+    onTimeCursor: (noradId, trackIndex) => renderTimeCursorFootprint(noradId, trackIndex),
+    onTimeCursorClear: () => clearTimeCursorFootprint(),
     onFootprintToggle: (visible) => {
       if (visible) {
         // Re-render all footprints
@@ -374,6 +383,77 @@ function removeFootprint(noradId) {
 function clearAllFootprints() {
   for (const [noradId] of footprintLayers) {
     removeFootprint(noradId);
+  }
+}
+
+// ===== Time Cursor Footprint =====
+
+let timeCursorLayer = null;
+
+function renderTimeCursorFootprint(noradId, trackIndex) {
+  clearTimeCursorFootprint();
+
+  const sat = findSatellite(noradId);
+  if (!sat || !sat.trackPoints || sat.trackPoints.length < 2) return;
+
+  const frameW = sat.frameWidth || 12;
+  const frameH = sat.frameHeight || 12;
+  const roll = sat.rollDeg || 0;
+  const pitch = sat.pitchDeg || 0;
+
+  const idx = Math.min(Math.max(0, trackIndex), sat.trackPoints.length - 1);
+  const rect = computeFootprintRect(sat.trackPoints, idx, frameW, frameH, roll, pitch);
+  if (!rect) return;
+
+  const map = getMap();
+  const group = L.layerGroup();
+
+  // Footprint rectangle
+  const poly = L.polygon(rect.corners, {
+    color: sat.color,
+    weight: 2,
+    fillColor: sat.color,
+    fillOpacity: 0.25,
+  });
+  group.addLayer(poly);
+
+  // Center marker (frame center)
+  const centerMarker = L.circleMarker(rect.center, {
+    radius: 4,
+    color: sat.color,
+    fillColor: sat.color,
+    fillOpacity: 0.9,
+    weight: 1,
+  });
+  group.addLayer(centerMarker);
+
+  // Sub-satellite point marker
+  const subsatMarker = L.circleMarker(rect.subsat, {
+    radius: 3,
+    color: '#fff',
+    fillColor: '#fff',
+    fillOpacity: 0.7,
+    weight: 1,
+  });
+  group.addLayer(subsatMarker);
+
+  // Time label popup
+  const tp = sat.trackPoints[idx];
+  const timeStr = tp.time.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km`, {
+    permanent: false,
+    direction: 'top',
+  });
+
+  group.addTo(map);
+  timeCursorLayer = group;
+}
+
+function clearTimeCursorFootprint() {
+  if (timeCursorLayer) {
+    const map = getMap();
+    if (map && map.hasLayer(timeCursorLayer)) map.removeLayer(timeCursorLayer);
+    timeCursorLayer = null;
   }
 }
 

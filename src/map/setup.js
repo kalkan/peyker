@@ -6,6 +6,7 @@ import L from 'leaflet';
 import { GROUND_STATIONS } from '../sat/presets.js';
 import { buildGsPopupContent } from '../ui/passes-panel.js';
 import { getState } from '../ui/state.js';
+import { computeCoverageRadius } from '../ui/controls.js';
 
 let map = null;
 let baseLayers = {};
@@ -147,12 +148,14 @@ function renderGsMarkers() {
     });
   }
 
-  // Coverage circle for active GS
+  // Coverage circle for active GS (radius from elevation angle)
   const activeIdx = getState().activeGsIndex || 0;
   const activeGs = stations[Math.min(activeIdx, stations.length - 1)];
   if (activeGs) {
+    const minEl = activeGs.minEl || 5;
+    const radiusKm = computeCoverageRadius(minEl);
     coverageCircle = L.circle([activeGs.lat, activeGs.lon], {
-      radius: 2500 * 1000,
+      radius: radiusKm * 1000,
       color: '#e04040',
       weight: 1.5,
       fillColor: '#e04040',

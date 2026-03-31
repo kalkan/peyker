@@ -11,7 +11,7 @@ export const PRESETS = [
  * Default ground stations. Users can add more via UI.
  */
 export const DEFAULT_GROUND_STATIONS = [
-  { name: 'Ankara', lat: 39.8911, lon: 32.7787, alt: 925 },
+  { name: 'Ankara', lat: 39.8911, lon: 32.7787, alt: 925, minEl: 5 },
 ];
 
 /**
