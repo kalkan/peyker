@@ -344,7 +344,7 @@ function renderFootprint(noradId) {
   // Slice track points to +-2 hours around selected time cursor
   const cursorIdx = sat._timeCursorIndex || 0;
   const cursorTime = sat.trackPoints[cursorIdx].time.getTime();
-  const WINDOW_MS = 2 * 3600 * 1000; // 2 hours
+  const WINDOW_MS = 1 * 3600 * 1000; // 1 hour
   const windowStart = cursorTime - WINDOW_MS;
   const windowEnd = cursorTime + WINDOW_MS;
 

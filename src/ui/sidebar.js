@@ -406,22 +406,21 @@ function renderSensorFrameControls(container, callbacks) {
   }, 1, 200, 1);
   container.append(fhRow);
 
-  // --- Roll Angle: input + slider ---
-  const rollRow = createSliderInput('Roll (deg)', sat.rollDeg || 0, -45, 45, 0.5, (val) => {
+  // --- Roll Angle: text input on top, slider below ---
+  const rollSection = createAngleControl('Roll (deg)', sat.rollDeg || 0, -45, 45, 0.5, (val) => {
     updateSatellite(sat.noradId, { rollDeg: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
   });
-  container.append(rollRow);
+  container.append(rollSection);
 
-  // --- Pitch Angle: input + slider (only for time cursor footprint) ---
-  const pitchRow = createSliderInput('Pitch (deg)', sat.pitchDeg || 0, -45, 45, 0.5, (val) => {
+  // --- Pitch Angle: text input on top, slider below (only for time cursor) ---
+  const pitchSection = createAngleControl('Pitch (deg)', sat.pitchDeg || 0, -45, 45, 0.5, (val) => {
     updateSatellite(sat.noradId, { pitchDeg: val });
-    // Pitch only affects the time cursor footprint, not the strip
     if (sat._timeCursorIndex != null && callbacks.onTimeCursor) {
       callbacks.onTimeCursor(sat.noradId, sat._timeCursorIndex);
     }
   });
-  container.append(pitchRow);
+  container.append(pitchSection);
 
   // --- Footprint visible toggle ---
   const toggleRow = document.createElement('div');
@@ -473,6 +472,54 @@ function createFrameInput(labelText, value, onChange, min, max, step) {
   });
   row.append(label, input);
   return row;
+}
+
+function createAngleControl(labelText, value, min, max, step, onChange) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'angle-control';
+
+  // Row: label + number input
+  const topRow = document.createElement('div');
+  topRow.className = 'angle-control-top';
+  const label = document.createElement('label');
+  label.className = 'angle-control-label';
+  label.textContent = labelText;
+  const numInput = document.createElement('input');
+  numInput.type = 'number';
+  numInput.className = 'angle-control-input';
+  numInput.min = min;
+  numInput.max = max;
+  numInput.step = step;
+  numInput.value = value;
+  topRow.append(label, numInput);
+  wrapper.append(topRow);
+
+  // Full-width slider below
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'sensor-slider';
+  slider.min = min;
+  slider.max = max;
+  slider.step = step;
+  slider.value = value;
+  wrapper.append(slider);
+
+  slider.addEventListener('input', () => {
+    const val = parseFloat(slider.value);
+    numInput.value = val;
+    onChange(val);
+  });
+
+  numInput.addEventListener('change', () => {
+    let val = parseFloat(numInput.value);
+    if (isNaN(val)) return;
+    val = Math.max(min, Math.min(max, val));
+    numInput.value = val;
+    slider.value = val;
+    onChange(val);
+  });
+
+  return wrapper;
 }
 
 function createSliderInput(labelText, value, min, max, step, onChange) {
