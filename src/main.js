@@ -170,7 +170,7 @@ async function addSatellite(noradId, presetName) {
     showLive: false,
     frameWidth: 12,
     frameHeight: 12,
-    rollDeg: 0,
+    rollDeg: 5,
     pitchDeg: 0,
     tle: null,
     satrec: null,
@@ -344,7 +344,7 @@ function renderFootprint(noradId) {
   // Slice track points to +-2 hours around selected time cursor
   const cursorIdx = sat._timeCursorIndex || 0;
   const cursorTime = sat.trackPoints[cursorIdx].time.getTime();
-  const WINDOW_MS = 1 * 3600 * 1000; // 1 hour
+  const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
   const windowStart = cursorTime - WINDOW_MS;
   const windowEnd = cursorTime + WINDOW_MS;
 

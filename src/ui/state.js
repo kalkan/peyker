@@ -69,7 +69,7 @@ export function loadState() {
         showLive: s.showLive || false,
         frameWidth: s.frameWidth || 12,
         frameHeight: s.frameHeight || 12,
-        rollDeg: s.rollDeg || 0,
+        rollDeg: s.rollDeg != null ? s.rollDeg : 5,
         pitchDeg: s.pitchDeg || 0,
         tle: null,
         satrec: null,
