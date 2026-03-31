@@ -346,11 +346,12 @@ function renderFootprint(noradId) {
   const group = L.layerGroup();
 
   // Build polygon strip: left edge forward + right edge reversed = closed polygon
+  const FOOTPRINT_COLOR = '#e04040';
   const polygonCoords = [...swath.left, ...swath.right.slice().reverse()];
   const poly = L.polygon(polygonCoords, {
-    color: sat.color,
+    color: FOOTPRINT_COLOR,
     weight: 1,
-    fillColor: sat.color,
+    fillColor: FOOTPRINT_COLOR,
     fillOpacity: 0.12,
     dashArray: '4 3',
   });
@@ -359,7 +360,7 @@ function renderFootprint(noradId) {
   // Center line (shifted track)
   if (roll !== 0) {
     const centerLine = L.polyline(swath.centers, {
-      color: sat.color,
+      color: FOOTPRINT_COLOR,
       weight: 1,
       opacity: 0.4,
       dashArray: '2 4',
@@ -407,12 +408,13 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
 
   const map = getMap();
   const group = L.layerGroup();
+  const FC = '#e04040';
 
   // Footprint rectangle
   const poly = L.polygon(rect.corners, {
-    color: sat.color,
+    color: FC,
     weight: 2,
-    fillColor: sat.color,
+    fillColor: FC,
     fillOpacity: 0.25,
   });
   group.addLayer(poly);
@@ -420,8 +422,8 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   // Center marker (frame center)
   const centerMarker = L.circleMarker(rect.center, {
     radius: 4,
-    color: sat.color,
-    fillColor: sat.color,
+    color: FC,
+    fillColor: FC,
     fillOpacity: 0.9,
     weight: 1,
   });
