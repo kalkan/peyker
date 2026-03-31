@@ -10,6 +10,13 @@ import { predictPasses } from '../sat/propagate.js';
 let passCache = null;
 const CACHE_TTL = 60000; // 1 minute
 
+/**
+ * Invalidate the pass cache (e.g. when satellite selection changes).
+ */
+export function invalidatePassCache() {
+  passCache = null;
+}
+
 // Currently viewed pass index (persists across re-renders for same satellite)
 let viewedPassIndex = -1; // -1 means "auto: next upcoming"
 let viewedSatId = null;
@@ -55,15 +62,12 @@ export function renderPassesPanel(container) {
     return;
   }
 
-  // Show loading then compute
-  container.innerHTML = '<div class="pass-loading">Computing passes...</div>';
-  requestAnimationFrame(() => {
-    const allPasses = predictPasses(sat.satrec, gs, 14);
-    passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
-    const minEl = state.minElevation || 0;
-    const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
-    buildPassUI(container, passes, sat.name);
-  });
+  // Compute passes synchronously so countdown stays in sync with map overlay
+  const allPasses = predictPasses(sat.satrec, gs, 14);
+  passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
+  const minEl = state.minElevation || 0;
+  const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
+  buildPassUI(container, passes, sat.name);
 }
 
 /**

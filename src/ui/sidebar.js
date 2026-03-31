@@ -327,7 +327,22 @@ function renderSensorFrameControls(container, callbacks) {
     timeInput.type = 'time';
     timeInput.className = 'sensor-time-input';
     timeInput.step = 60;
-    const curIdx = sat._timeCursorIndex || 0;
+    // Default to 08:00 UTC if no cursor index set
+    let curIdx = sat._timeCursorIndex;
+    if (curIdx == null) {
+      // Find closest track point to 08:00 UTC
+      let bestIdx = 0, bestDiff = Infinity;
+      for (let i = 0; i < sat.trackPoints.length; i++) {
+        const t = sat.trackPoints[i].time;
+        const tMin = t.getUTCHours() * 60 + t.getUTCMinutes();
+        const target = 8 * 60; // 08:00
+        const diff = Math.abs(tMin - target);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      curIdx = bestIdx;
+      sat._timeCursorIndex = curIdx;
+      if (callbacks.onTimeCursor) callbacks.onTimeCursor(sat.noradId, curIdx);
+    }
     const curPt = sat.trackPoints[curIdx];
     if (curPt) {
       timeInput.value = curPt.time.toISOString().slice(11, 16);

@@ -16,6 +16,7 @@ import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe, getActiveGs } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
+import { invalidatePassCache } from './ui/passes-panel.js';
 import { setRefreshTleCallback } from './ui/info-panel.js';
 
 import L from 'leaflet';
@@ -71,7 +72,15 @@ function init() {
     }
   });
 
+  let prevSelectedSatId = getState().selectedSatId;
   subscribe(() => {
+    const currentSatId = getState().selectedSatId;
+    if (currentSatId !== prevSelectedSatId) {
+      // Satellite selection changed — invalidate both pass caches
+      invalidatePassCache();
+      countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      prevSelectedSatId = currentSatId;
+    }
     updateSatListAndInfo(getCallbacks());
   });
 
