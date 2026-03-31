@@ -125,7 +125,12 @@ function getCallbacks() {
         renderTimeCursorFootprint(noradId, sat._timeCursorIndex);
       }
     },
-    onTimeCursor: (noradId, trackIndex) => renderTimeCursorFootprint(noradId, trackIndex),
+    onTimeCursor: (noradId, trackIndex) => {
+      const sat = findSatellite(noradId);
+      if (sat) sat._timeCursorIndex = trackIndex;
+      renderFootprint(noradId);
+      renderTimeCursorFootprint(noradId, trackIndex);
+    },
     onTimeCursorClear: () => clearTimeCursorFootprint(),
     onFootprintToggle: (visible) => {
       if (visible) {
@@ -334,9 +339,21 @@ function renderFootprint(noradId) {
   const frameW = sat.frameWidth || 12;
   const frameH = sat.frameHeight || 12;
   const roll = sat.rollDeg || 0;
-  const pitch = sat.pitchDeg || 0;
+  const pitch = 0; // strip uses 0 pitch; pitch only for time cursor
 
-  const swath = computeSwathPolygon(sat.trackPoints, frameW, frameH, roll, pitch);
+  // Slice track points to +-2 hours around selected time cursor
+  const cursorIdx = sat._timeCursorIndex || 0;
+  const cursorTime = sat.trackPoints[cursorIdx].time.getTime();
+  const WINDOW_MS = 2 * 3600 * 1000; // 2 hours
+  const windowStart = cursorTime - WINDOW_MS;
+  const windowEnd = cursorTime + WINDOW_MS;
+
+  const windowPoints = sat.trackPoints.filter(
+    p => p.time.getTime() >= windowStart && p.time.getTime() <= windowEnd
+  );
+  if (windowPoints.length < 2) return;
+
+  const swath = computeSwathPolygon(windowPoints, frameW, frameH, roll, pitch);
   if (swath.left.length === 0) return;
 
   // Remove previous footprint for this satellite
@@ -410,6 +427,16 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   const group = L.layerGroup();
   const FC = '#e04040';
 
+  // Large pulsing marker for zoom-out visibility
+  const bigMarker = L.circleMarker(rect.center, {
+    radius: 12,
+    color: FC,
+    fillColor: FC,
+    fillOpacity: 0.3,
+    weight: 2,
+  });
+  group.addLayer(bigMarker);
+
   // Footprint rectangle
   const poly = L.polygon(rect.corners, {
     color: FC,
@@ -421,8 +448,8 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
 
   // Center marker (frame center)
   const centerMarker = L.circleMarker(rect.center, {
-    radius: 4,
-    color: FC,
+    radius: 5,
+    color: '#fff',
     fillColor: FC,
     fillOpacity: 0.9,
     weight: 1,
@@ -442,7 +469,7 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   // Time label popup
   const tp = sat.trackPoints[idx];
   const timeStr = tp.time.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}°`, {
+  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}° Pitch: ${pitch}°`, {
     permanent: true,
     direction: 'top',
     className: 'sensor-cursor-tooltip',

@@ -406,12 +406,22 @@ function renderSensorFrameControls(container, callbacks) {
   }, 1, 200, 1);
   container.append(fhRow);
 
-  // --- Roll Slider + Input ---
+  // --- Roll Angle: input + slider ---
   const rollRow = createSliderInput('Roll (deg)', sat.rollDeg || 0, -45, 45, 0.5, (val) => {
     updateSatellite(sat.noradId, { rollDeg: val });
     if (callbacks.onFootprintChange) callbacks.onFootprintChange(sat.noradId);
   });
   container.append(rollRow);
+
+  // --- Pitch Angle: input + slider (only for time cursor footprint) ---
+  const pitchRow = createSliderInput('Pitch (deg)', sat.pitchDeg || 0, -45, 45, 0.5, (val) => {
+    updateSatellite(sat.noradId, { pitchDeg: val });
+    // Pitch only affects the time cursor footprint, not the strip
+    if (sat._timeCursorIndex != null && callbacks.onTimeCursor) {
+      callbacks.onTimeCursor(sat.noradId, sat._timeCursorIndex);
+    }
+  });
+  container.append(pitchRow);
 
   // --- Footprint visible toggle ---
   const toggleRow = document.createElement('div');
