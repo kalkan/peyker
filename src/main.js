@@ -93,6 +93,9 @@ function init() {
   // Always start the live timer — it checks per-satellite showLive flags
   startLiveUpdates();
 
+  // Map location search (Nominatim)
+  initMapSearch();
+
   // Start map countdown overlay
   startCountdownOverlay();
   subscribe(() => updateCountdownOverlay());
@@ -677,6 +680,84 @@ function fmtCountdownOverlay(ms) {
   const pad = n => String(n).padStart(2, '0');
   if (d > 0) return `${d}g ${pad(h)}:${pad(m)}:${pad(s)}`;
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+// ===== Map Location Search (Nominatim) =====
+
+function initMapSearch() {
+  const input = document.getElementById('map-search-input');
+  const resultsEl = document.getElementById('map-search-results');
+  if (!input || !resultsEl) return;
+
+  let searchTimeout = null;
+
+  function hideResults() {
+    resultsEl.style.display = 'none';
+    resultsEl.innerHTML = '';
+  }
+
+  async function search(query) {
+    if (query.length < 2) { hideResults(); return; }
+    resultsEl.innerHTML = '<div class="map-search-item loading">Aranıyor...</div>';
+    resultsEl.style.display = 'block';
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(query)}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'tr' } });
+      const data = await res.json();
+
+      resultsEl.innerHTML = '';
+      if (data.length === 0) {
+        resultsEl.innerHTML = '<div class="map-search-item loading">Sonuç bulunamadı</div>';
+        setTimeout(hideResults, 2000);
+        return;
+      }
+
+      for (const place of data) {
+        const item = document.createElement('div');
+        item.className = 'map-search-item';
+        item.textContent = place.display_name;
+        item.addEventListener('click', () => {
+          const lat = parseFloat(place.lat);
+          const lon = parseFloat(place.lon);
+          const map = getMap();
+          if (map) {
+            if (place.boundingbox) {
+              const bb = place.boundingbox.map(Number);
+              map.flyToBounds([[bb[0], bb[2]], [bb[1], bb[3]]], { maxZoom: 12, duration: 1.5 });
+            } else {
+              map.flyTo([lat, lon], 10, { duration: 1.5 });
+            }
+          }
+          input.value = place.display_name.split(',')[0];
+          hideResults();
+        });
+        resultsEl.append(item);
+      }
+    } catch {
+      resultsEl.innerHTML = '<div class="map-search-item loading">Arama hatası</div>';
+      setTimeout(hideResults, 2000);
+    }
+  }
+
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const val = input.value.trim();
+    if (val) {
+      searchTimeout = setTimeout(() => search(val), 400);
+    } else {
+      hideResults();
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { hideResults(); input.blur(); }
+  });
+
+  document.addEventListener('click', (e) => {
+    const container = document.getElementById('map-search');
+    if (container && !container.contains(e.target)) hideResults();
+  });
 }
 
 // ===== Toast Notifications =====
