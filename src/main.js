@@ -120,8 +120,9 @@ function getCallbacks() {
     onCoverageToggle: (visible) => toggleCoverage(visible),
     onGsChanged: () => {
       // Refresh passes and map when ground station changes
-      updateCountdownOverlay();
+      invalidatePassCache();
       countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      updateCountdownOverlay();
       refreshMapGsMarkers();
     },
     onExportSelected: () => exportSelected(),

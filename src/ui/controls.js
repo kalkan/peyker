@@ -69,6 +69,29 @@ export function renderDateControls(container, callbacks) {
 
   btnGroup.append(showTrackBtn, showTodayBtn, clearBtn);
   container.append(btnGroup);
+
+  // Day navigation buttons
+  const dayNav = document.createElement('div');
+  dayNav.className = 'day-nav-row';
+
+  const prevDayBtn = createButton('◀ Önceki Gün', 'btn btn-sm day-nav-btn', () => {
+    shiftDate(-1);
+    if (callbacks.onShowTrack) callbacks.onShowTrack();
+  });
+
+  const dayLabel = document.createElement('span');
+  dayLabel.className = 'day-nav-label';
+  const [y, m, d] = state.selectedDate.split('-').map(Number);
+  const dateObj = new Date(Date.UTC(y, m - 1, d));
+  dayLabel.textContent = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', weekday: 'short', timeZone: 'UTC' });
+
+  const nextDayBtn = createButton('Sonraki Gün ▶', 'btn btn-sm day-nav-btn', () => {
+    shiftDate(1);
+    if (callbacks.onShowTrack) callbacks.onShowTrack();
+  });
+
+  dayNav.append(prevDayBtn, dayLabel, nextDayBtn);
+  container.append(dayNav);
 }
 
 /**
@@ -279,6 +302,15 @@ function createSmallInput(labelText, type, defaultValue) {
 }
 
 // --- Helpers ---
+
+function shiftDate(days) {
+  const state = getState();
+  const [y, m, d] = state.selectedDate.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  const newDate = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  setState({ selectedDate: newDate });
+}
 
 function createControlRow(labelText, inputType, value, onChange) {
   const row = document.createElement('div');
