@@ -260,7 +260,8 @@ export function renderGroundStationControls(container, callbacks) {
   container.append(addSection);
 
   // Coverage toggle with computed radius
-  const activeGs = state.groundStations[state.activeGsIndex || 0];
+  const gsIdx = Math.min(state.activeGsIndex || 0, state.groundStations.length - 1);
+  const activeGs = state.groundStations[gsIdx];
   const covEl = activeGs && activeGs.minEl ? activeGs.minEl : 5;
   const covRadius = computeCoverageRadius(covEl);
   const toggle = createToggleRow(`Coverage circle (${covRadius} km, ${covEl}° el)`, state.coverageVisible, (checked) => {

@@ -156,6 +156,7 @@ function getCallbacks() {
         }
       } else {
         clearAllFootprints();
+        clearTimeCursorFootprint();
       }
     },
   };
@@ -285,7 +286,9 @@ function autoShowTrackForSat(noradId) {
     renderTrack(noradId, sat.name, segments, sat.color, true);
     renderFootprint(noradId);
     setStatus(`Track rendered for ${sat.name}`);
-  } catch { /* silent */ }
+  } catch (err) {
+    console.warn(`Track generation failed for ${sat.name}:`, err.message);
+  }
 }
 
 function showSelectedDayTrack() {
@@ -354,8 +357,8 @@ function renderFootprint(noradId) {
   const roll = sat.rollDeg || 0;
   const pitch = 0; // strip uses 0 pitch; pitch only for time cursor
 
-  // Slice track points to +-2 hours around selected time cursor
-  const cursorIdx = sat._timeCursorIndex || 0;
+  // Slice track points to +-10 min around selected time cursor
+  const cursorIdx = Math.min(sat._timeCursorIndex || 0, sat.trackPoints.length - 1);
   const cursorTime = sat.trackPoints[cursorIdx].time.getTime();
   const WINDOW_MS = 10 * 60 * 1000; // 10 minutes
   const windowStart = cursorTime - WINDOW_MS;

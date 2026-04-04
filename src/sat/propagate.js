@@ -357,11 +357,20 @@ export function predictPasses(satrec, gs, days, stepSeconds = 30) {
 
   // Close any pass still in progress at end of window
   if (inPass) {
+    const aosDate = new Date(passStart);
+    const losDate = new Date(end);
+    const tcaDate = new Date(maxElTime);
+    const aosLook = getLookAngles(satrec, aosDate, gs);
+    const tcaLook = getLookAngles(satrec, tcaDate, gs);
+    const losLook = getLookAngles(satrec, losDate, gs);
     passes.push({
-      aos: new Date(passStart),
-      los: new Date(end),
-      tca: new Date(maxElTime),
+      aos: aosDate,
+      los: losDate,
+      tca: tcaDate,
       maxEl,
+      azAos: aosLook ? aosLook.azimuth : null,
+      azTca: tcaLook ? tcaLook.azimuth : null,
+      azLos: losLook ? losLook.azimuth : null,
     });
   }
 

@@ -38,20 +38,17 @@ export function renderOverlapPanel(container) {
     return;
   }
 
-  container.innerHTML = '<div class="pass-loading">Analyzing overlaps...</div>';
-  requestAnimationFrame(() => {
-    const allPasses = [];
-    for (const sat of satsWithTle) {
-      const passes = predictPasses(sat.satrec, gs, 14);
-      for (const p of passes) {
-        allPasses.push({ ...p, sat });
-      }
+  const allPasses = [];
+  for (const sat of satsWithTle) {
+    const passes = predictPasses(sat.satrec, gs, 14);
+    for (const p of passes) {
+      allPasses.push({ ...p, sat });
     }
+  }
 
-    const overlaps = findOverlaps(allPasses);
-    overlapCache = { key: cacheKey, overlaps, computedAt: Date.now() };
-    buildOverlapUI(container, overlaps, satsWithTle);
-  });
+  const overlaps = findOverlaps(allPasses);
+  overlapCache = { key: cacheKey, overlaps, computedAt: Date.now() };
+  buildOverlapUI(container, overlaps, satsWithTle);
 }
 
 /**

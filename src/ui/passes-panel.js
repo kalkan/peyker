@@ -28,6 +28,9 @@ let countdownTimer = null;
  * Render the passes panel into the given container.
  */
 export function renderPassesPanel(container) {
+  // Always clean up old countdown timer before re-rendering
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+
   const state = getState();
   container.innerHTML = '';
 
