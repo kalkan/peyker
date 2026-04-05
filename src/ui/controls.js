@@ -74,10 +74,17 @@ export function renderDateControls(container, callbacks) {
   const dayNav = document.createElement('div');
   dayNav.className = 'day-nav-row';
 
-  const prevDayBtn = createButton('◀ Önceki Gün', 'btn btn-sm day-nav-btn', () => {
-    shiftDate(-1);
+  function updateDayNav(offset) {
+    shiftDate(offset);
+    const s = getState();
+    dateRow.querySelector('input').value = s.selectedDate;
+    const [ny, nm, nd] = s.selectedDate.split('-').map(Number);
+    const nd2 = new Date(Date.UTC(ny, nm - 1, nd));
+    dayLabel.textContent = nd2.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', weekday: 'short', timeZone: 'UTC' });
     if (callbacks.onShowTrack) callbacks.onShowTrack();
-  });
+  }
+
+  const prevDayBtn = createButton('◀ Önceki Gün', 'btn btn-sm day-nav-btn', () => updateDayNav(-1));
 
   const dayLabel = document.createElement('span');
   dayLabel.className = 'day-nav-label';
@@ -85,10 +92,7 @@ export function renderDateControls(container, callbacks) {
   const dateObj = new Date(Date.UTC(y, m - 1, d));
   dayLabel.textContent = dateObj.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', weekday: 'short', timeZone: 'UTC' });
 
-  const nextDayBtn = createButton('Sonraki Gün ▶', 'btn btn-sm day-nav-btn', () => {
-    shiftDate(1);
-    if (callbacks.onShowTrack) callbacks.onShowTrack();
-  });
+  const nextDayBtn = createButton('Sonraki Gün ▶', 'btn btn-sm day-nav-btn', () => updateDayNav(1));
 
   dayNav.append(prevDayBtn, dayLabel, nextDayBtn);
   container.append(dayNav);

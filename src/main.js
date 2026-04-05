@@ -72,13 +72,38 @@ function init() {
     }
   });
 
+  let prevSatIds = new Set(getState().satellites.map(s => s.noradId));
   let prevSelectedSatId = getState().selectedSatId;
   subscribe(() => {
-    const currentSatId = getState().selectedSatId;
+    const state = getState();
+    const currentSatId = state.selectedSatId;
+
+    // Detect removed satellites and clean up their map layers
+    const currentIds = new Set(state.satellites.map(s => s.noradId));
+    for (const id of prevSatIds) {
+      if (!currentIds.has(id)) {
+        removeFootprint(id);
+        if (timeCursorLayer && id === prevSelectedSatId) clearTimeCursorFootprint();
+      }
+    }
+    prevSatIds = currentIds;
+
     if (currentSatId !== prevSelectedSatId) {
       // Satellite selection changed — invalidate both pass caches
       invalidatePassCache();
       countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+
+      // Auto-zoom to selected satellite's track
+      const selectedSat = currentSatId ? findSatellite(currentSatId) : null;
+      if (selectedSat && selectedSat.trackPoints && selectedSat.trackPoints.length > 0) {
+        const map = getMap();
+        if (map) {
+          const pts = selectedSat.trackPoints;
+          const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lon]));
+          map.flyToBounds(bounds, { padding: [40, 40], maxZoom: 6, duration: 0.8 });
+        }
+      }
+
       prevSelectedSatId = currentSatId;
     }
     updateSatListAndInfo(getCallbacks());
@@ -693,6 +718,7 @@ function initMapSearch() {
   if (!input || !resultsEl) return;
 
   let searchTimeout = null;
+  let lastSearchTime = 0;
 
   function hideResults() {
     resultsEl.style.display = 'none';
@@ -701,6 +727,13 @@ function initMapSearch() {
 
   async function search(query) {
     if (query.length < 2) { hideResults(); return; }
+
+    // Nominatim rate limit: max 1 request per second
+    const now = Date.now();
+    const wait = Math.max(0, 1000 - (now - lastSearchTime));
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastSearchTime = Date.now();
+
     resultsEl.innerHTML = '<div class="map-search-item loading">Aranıyor...</div>';
     resultsEl.style.display = 'block';
 
@@ -747,7 +780,7 @@ function initMapSearch() {
     clearTimeout(searchTimeout);
     const val = input.value.trim();
     if (val) {
-      searchTimeout = setTimeout(() => search(val), 400);
+      searchTimeout = setTimeout(() => search(val), 1000);
     } else {
       hideResults();
     }

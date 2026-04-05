@@ -537,54 +537,6 @@ function createAngleControl(labelText, value, min, max, step, onChange) {
   return wrapper;
 }
 
-function createSliderInput(labelText, value, min, max, step, onChange) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'slider-input-group';
-
-  const label = document.createElement('label');
-  label.className = 'slider-input-label';
-  label.textContent = labelText;
-  wrapper.append(label);
-
-  const row = document.createElement('div');
-  row.className = 'slider-input-row';
-
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.className = 'sensor-slider';
-  slider.min = min;
-  slider.max = max;
-  slider.step = step;
-  slider.value = value;
-
-  const numInput = document.createElement('input');
-  numInput.type = 'number';
-  numInput.className = 'slider-num-input';
-  numInput.min = min;
-  numInput.max = max;
-  numInput.step = step;
-  numInput.value = value;
-
-  slider.addEventListener('input', () => {
-    const val = parseFloat(slider.value);
-    numInput.value = val;
-    onChange(val);
-  });
-
-  numInput.addEventListener('change', () => {
-    let val = parseFloat(numInput.value);
-    if (isNaN(val)) return;
-    val = Math.max(min, Math.min(max, val));
-    numInput.value = val;
-    slider.value = val;
-    onChange(val);
-  });
-
-  row.append(slider, numInput);
-  wrapper.append(row);
-  return wrapper;
-}
-
 // --- Helpers ---
 
 function createSection(title, collapsible, buildBody) {
