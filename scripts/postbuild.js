@@ -35,6 +35,15 @@ if (existsSync(antennaPath)) {
   console.log('  Copied dist/antenna-src.html → antenna.html');
 }
 
+
+// Copy gs-planner-src.html → gs-planner.html (at repo root)
+const gsPlannerPath = join(dist, 'gs-planner-src.html');
+if (existsSync(gsPlannerPath)) {
+  const gsPlannerHtml = readFileSync(gsPlannerPath, 'utf8');
+  writeFileSync(join(root, 'gs-planner.html'), gsPlannerHtml);
+  console.log('  Copied dist/gs-planner-src.html → gs-planner.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');
