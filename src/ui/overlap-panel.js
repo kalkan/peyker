@@ -57,7 +57,7 @@ export function renderOverlapPanel(container) {
   const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',') + ':' + selectedDays;
 
   if (overlapCache && overlapCache.key === cacheKey && (now - overlapCache.computedAt) < CACHE_TTL) {
-    buildOverlapUI(container, overlapCache.overlaps, satsWithTle);
+    buildOverlapUI(container, overlapCache.overlaps, satsWithTle, filterRow);
     return;
   }
 
@@ -71,7 +71,7 @@ export function renderOverlapPanel(container) {
 
   const overlaps = findOverlaps(allPasses);
   overlapCache = { key: cacheKey, overlaps, computedAt: Date.now() };
-  buildOverlapUI(container, overlaps, satsWithTle);
+  buildOverlapUI(container, overlaps, satsWithTle, filterRow);
 }
 
 /**
@@ -121,8 +121,10 @@ function findOverlaps(allPasses) {
   return overlaps;
 }
 
-function buildOverlapUI(container, overlaps, sats) {
+function buildOverlapUI(container, overlaps, sats, filterRow) {
   container.innerHTML = '';
+  // Re-add filter row at the top (it was cleared by innerHTML = '')
+  if (filterRow) container.append(filterRow);
 
   // Summary
   const summary = document.createElement('div');
