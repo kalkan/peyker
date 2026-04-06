@@ -16,7 +16,7 @@ import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe, getActiveGs } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
-import { invalidatePassCache } from './ui/passes-panel.js';
+import { invalidatePassCache, setPassSelectCallback } from './ui/passes-panel.js';
 import { setRefreshTleCallback } from './ui/info-panel.js';
 
 import L from 'leaflet';
@@ -36,6 +36,7 @@ let liveTimer = null;
 let countdownOverlayTimer = null;
 let countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
 const footprintLayers = new Map(); // noradId -> L.layerGroup
+let passArcGroup = null; // LayerGroup for selected pass arc
 
 // ===== Initialize =====
 function init() {
@@ -79,6 +80,11 @@ function init() {
     }
   });
 
+  // Wire up pass selection → map arc visualization
+  setPassSelectCallback((pass, sat) => {
+    renderPassArc(pass, sat);
+  });
+
   let prevSatIds = new Set(getState().satellites.map(s => s.noradId));
   let prevSelectedSatId = getState().selectedSatId;
   subscribe(() => {
@@ -96,9 +102,10 @@ function init() {
     prevSatIds = currentIds;
 
     if (currentSatId !== prevSelectedSatId) {
-      // Satellite selection changed — invalidate both pass caches
+      // Satellite selection changed — invalidate both pass caches and clear arc
       invalidatePassCache();
       countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      clearPassArc();
 
       // Auto-zoom to selected satellite's track
       const selectedSat = currentSatId ? findSatellite(currentSatId) : null;
@@ -553,6 +560,78 @@ function clearTimeCursorFootprint() {
     const map = getMap();
     if (map && map.hasLayer(timeCursorLayer)) map.removeLayer(timeCursorLayer);
     timeCursorLayer = null;
+  }
+}
+
+// ===== Pass Arc Visualization =====
+
+/**
+ * Draw the satellite ground track for a selected pass (AOS→LOS) on the map.
+ * Shows the arc that enters the coverage circle with distinct styling.
+ */
+function renderPassArc(pass, sat) {
+  clearPassArc();
+  if (!sat || !sat.satrec || !pass) return;
+
+  const map = getMap();
+  if (!map) return;
+
+  passArcGroup = L.layerGroup().addTo(map);
+
+  // Propagate from AOS to LOS at 10-second intervals
+  const aosMs = pass.aos.getTime();
+  const losMs = pass.los.getTime();
+  const step = 10000; // 10 seconds
+  const points = [];
+
+  for (let t = aosMs; t <= losMs; t += step) {
+    const pos = propagateAt(sat.satrec, new Date(t));
+    if (pos) points.push([pos.lat, pos.lon]);
+  }
+  // Ensure LOS point is included
+  const losPos = propagateAt(sat.satrec, pass.los);
+  if (losPos) points.push([losPos.lat, losPos.lon]);
+
+  if (points.length < 2) return;
+
+  // Draw the pass arc polyline
+  const arcLine = L.polyline(points, {
+    color: '#ffd33d',
+    weight: 4,
+    opacity: 0.9,
+    dashArray: null,
+  }).addTo(passArcGroup);
+
+  // AOS marker (green)
+  L.circleMarker(points[0], {
+    radius: 6, color: '#3fb950', fillColor: '#3fb950',
+    fillOpacity: 1, weight: 2,
+  }).addTo(passArcGroup).bindTooltip('AOS', { permanent: true, direction: 'left', className: 'pass-arc-tooltip' });
+
+  // LOS marker (red)
+  L.circleMarker(points[points.length - 1], {
+    radius: 6, color: '#f85149', fillColor: '#f85149',
+    fillOpacity: 1, weight: 2,
+  }).addTo(passArcGroup).bindTooltip('LOS', { permanent: true, direction: 'right', className: 'pass-arc-tooltip' });
+
+  // TCA marker (blue, at max elevation)
+  const tcaPos = propagateAt(sat.satrec, pass.tca);
+  if (tcaPos) {
+    L.circleMarker([tcaPos.lat, tcaPos.lon], {
+      radius: 6, color: '#58a6ff', fillColor: '#58a6ff',
+      fillOpacity: 1, weight: 2,
+    }).addTo(passArcGroup).bindTooltip(`TCA ${pass.maxEl.toFixed(1)}°`, { permanent: true, direction: 'top', className: 'pass-arc-tooltip' });
+  }
+
+  // Zoom to the arc
+  map.flyToBounds(arcLine.getBounds().pad(0.3), { maxZoom: 8, duration: 0.5 });
+}
+
+function clearPassArc() {
+  if (passArcGroup) {
+    const map = getMap();
+    if (map && map.hasLayer(passArcGroup)) map.removeLayer(passArcGroup);
+    passArcGroup = null;
   }
 }
 

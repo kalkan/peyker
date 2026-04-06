@@ -466,6 +466,22 @@ html, body {
   box-shadow: var(--shadow-glass);
 }
 
+/* ===== Pass Arc Tooltip ===== */
+.pass-arc-tooltip {
+  background: rgba(13, 17, 23, 0.85) !important;
+  border: 1px solid rgba(48, 54, 61, 0.8) !important;
+  color: #c9d1d9 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+.pass-arc-tooltip::before {
+  border-top-color: rgba(48, 54, 61, 0.8) !important;
+}
+
 /* ===== Sidebar Header ===== */
 .sidebar-header {
   padding: 24px 22px 18px;

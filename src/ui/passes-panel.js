@@ -11,6 +11,16 @@ let passCache = null;
 const CACHE_TTL = 60000; // 1 minute
 const ANALYSIS_DAYS = 30;
 
+let passSelectCallback = null;
+
+/**
+ * Set callback for when a pass is selected/clicked.
+ * Callback receives (pass, satellite) where pass is { aos, los, tca, maxEl, ... }.
+ */
+export function setPassSelectCallback(cb) {
+  passSelectCallback = cb;
+}
+
 /**
  * Invalidate the pass cache (e.g. when satellite selection changes).
  */
@@ -172,7 +182,7 @@ function buildPassUI(container, passes, satName) {
         <td class="az-cell">${fmtAzShort(p.azAos)}→${fmtAzShort(p.azLos)}</td>
       `;
 
-      // Click row to jump to that pass in card
+      // Click row to jump to that pass in card and visualize on map
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', () => {
         viewedPassIndex = pIdx;
@@ -182,6 +192,11 @@ function buildPassUI(container, passes, satName) {
           r.classList.remove('pass-row-next');
         });
         tr.classList.add('pass-row-next');
+        // Notify map to draw pass arc
+        if (passSelectCallback) {
+          const sat = findSatellite(getState().selectedSatId);
+          if (sat) passSelectCallback(passes[pIdx], sat);
+        }
       });
 
       tbody.append(tr);
@@ -322,6 +337,10 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
     viewedPassIndex = idx - 1;
     renderPassCard(wrapper, passes[viewedPassIndex], passes, viewedPassIndex, nextUpIdx, Date.now(), false);
     highlightTableRow(wrapper.parentElement, viewedPassIndex, passes);
+    if (passSelectCallback) {
+      const sat = findSatellite(getState().selectedSatId);
+      if (sat) passSelectCallback(passes[viewedPassIndex], sat);
+    }
   });
 
   const nextBtn = document.createElement('button');
@@ -333,6 +352,10 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
     viewedPassIndex = idx + 1;
     renderPassCard(wrapper, passes[viewedPassIndex], passes, viewedPassIndex, nextUpIdx, Date.now(), false);
     highlightTableRow(wrapper.parentElement, viewedPassIndex, passes);
+    if (passSelectCallback) {
+      const sat = findSatellite(getState().selectedSatId);
+      if (sat) passSelectCallback(passes[viewedPassIndex], sat);
+    }
   });
 
   const counter = document.createElement('span');
@@ -346,8 +369,13 @@ function renderPassCard(wrapper, pass, passes, idx, nextUpIdx, now, isAutoNext) 
   homeBtn.disabled = nextUpIdx < 0;
   homeBtn.addEventListener('click', () => {
     viewedPassIndex = -1;
-    renderPassCard(wrapper, passes[nextUpIdx >= 0 ? nextUpIdx : 0], passes, nextUpIdx >= 0 ? nextUpIdx : 0, nextUpIdx, Date.now(), true);
-    highlightTableRow(wrapper.parentElement, nextUpIdx >= 0 ? nextUpIdx : 0, passes);
+    const homeIdx = nextUpIdx >= 0 ? nextUpIdx : 0;
+    renderPassCard(wrapper, passes[homeIdx], passes, homeIdx, nextUpIdx, Date.now(), true);
+    highlightTableRow(wrapper.parentElement, homeIdx, passes);
+    if (passSelectCallback) {
+      const sat = findSatellite(getState().selectedSatId);
+      if (sat) passSelectCallback(passes[homeIdx], sat);
+    }
   });
 
   nav.append(prevBtn, counter, homeBtn, nextBtn);
