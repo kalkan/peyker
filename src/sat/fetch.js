@@ -47,7 +47,10 @@ export async function fetchTLE(noradId) {
   if (cached) return cached;
 
   const url = `${CELESTRAK_GP_URL}?CATNR=${noradId}&FORMAT=TLE`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  const response = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
 
   if (!response.ok) {
     throw new Error(`TLE fetch failed: HTTP ${response.status}`);

@@ -282,19 +282,40 @@ async function fetchMetadata(noradId) {
 
 async function restoreSatellites() {
   const state = getState();
-  for (const sat of state.satellites) {
-    if (!sat.satrec) {
-      try {
-        const tle = await fetchTLE(sat.noradId);
-        const satrec = parseTLE(tle.line1, tle.line2);
-        updateSatellite(sat.noradId, {
-          name: tle.name,
-          tle: { line1: tle.line1, line2: tle.line2 },
-          satrec,
-        });
-        fetchMetadata(sat.noradId);
-      } catch {
-        showToast(`Could not restore #${sat.noradId}`, 'warning');
+  const toRestore = state.satellites.filter(s => !s.satrec);
+  if (toRestore.length === 0) return;
+
+  const results = await Promise.allSettled(
+    toRestore.map(sat => restoreOneSatellite(sat.noradId))
+  );
+
+  const failed = [];
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') failed.push(toRestore[i].noradId);
+  });
+
+  if (failed.length > 0) {
+    showToast(`Could not restore: ${failed.map(id => '#' + id).join(', ')}`, 'warning');
+  }
+}
+
+async function restoreOneSatellite(noradId, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const tle = await fetchTLE(noradId);
+      const satrec = parseTLE(tle.line1, tle.line2);
+      updateSatellite(noradId, {
+        name: tle.name,
+        tle: { line1: tle.line1, line2: tle.line2 },
+        satrec,
+      });
+      fetchMetadata(noradId);
+      return;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      } else {
+        throw err;
       }
     }
   }
