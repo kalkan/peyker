@@ -1,5 +1,10 @@
-import L from 'leaflet';
 import './styles/gs-planner.css';
+
+const L = window.L;
+
+if (!L) {
+  document.body.innerHTML = '<div style="padding:16px;color:#fff;background:#0a0f1a;font-family:system-ui">Leaflet yüklenemedi. Lütfen bağlantınızı kontrol edip sayfayı yenileyin.</div>';
+}
 import { getState, loadState, setState, subscribe } from './ui/state.js';
 import { DEFAULT_GROUND_STATIONS } from './sat/presets.js';
 import { computeCoverageRadius } from './ui/controls.js';
@@ -55,7 +60,7 @@ function buildSidebar() {
     <h1 class="header-title">Yer İstasyonu Planlama</h1>
     <div class="header-subtitle">Sadece yer istasyonları, kapsama çemberleri ve kesişim analizi.</div>
     <div class="top-links">
-      <a class="top-link" href="./index.html">Harita</a>
+      <a class="top-link" href="./index.html">Anasayfa</a>
       <a class="top-link" href="./antenna.html">Anten</a>
       <a class="top-link" href="./mobile.html">Mobil</a>
     </div>
@@ -247,4 +252,4 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
 
-init();
+if (L) init();
