@@ -10,8 +10,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         dev: resolve(__dirname, 'dev.html'),
-        mobile: resolve(__dirname, 'mobile.html'),
-        antenna: resolve(__dirname, 'antenna.html'),
+        mobile: resolve(__dirname, 'mobile-src.html'),
+        antenna: resolve(__dirname, 'antenna-src.html'),
       },
     },
   },

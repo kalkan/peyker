@@ -100,10 +100,15 @@ export function renderInfoPanel(container) {
     const refreshBtn = document.createElement('button');
     refreshBtn.className = 'btn btn-sm tle-refresh-btn';
     refreshBtn.textContent = 'Refresh TLE';
-    refreshBtn.addEventListener('click', () => {
+    refreshBtn.addEventListener('click', async () => {
       refreshBtn.disabled = true;
       refreshBtn.textContent = 'Refreshing...';
-      refreshTleCallback(sat.noradId);
+      try {
+        await refreshTleCallback(sat.noradId);
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh TLE';
+      }
     });
     container.append(refreshBtn);
   }

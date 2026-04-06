@@ -19,20 +19,20 @@ const devHtml = readFileSync(join(dist, 'dev.html'), 'utf8');
 writeFileSync(join(root, 'index.html'), devHtml);
 console.log('  Copied dist/dev.html → index.html');
 
-// Copy mobile.html → mobile.html (at repo root)
-const mobilePath = join(dist, 'mobile.html');
+// Copy mobile-src.html → mobile.html (at repo root)
+const mobilePath = join(dist, 'mobile-src.html');
 if (existsSync(mobilePath)) {
   const mobileHtml = readFileSync(mobilePath, 'utf8');
   writeFileSync(join(root, 'mobile.html'), mobileHtml);
-  console.log('  Copied dist/mobile.html → mobile.html');
+  console.log('  Copied dist/mobile-src.html → mobile.html');
 }
 
-// Copy antenna.html → antenna.html (at repo root)
-const antennaPath = join(dist, 'antenna.html');
+// Copy antenna-src.html → antenna.html (at repo root)
+const antennaPath = join(dist, 'antenna-src.html');
 if (existsSync(antennaPath)) {
   const antennaHtml = readFileSync(antennaPath, 'utf8');
   writeFileSync(join(root, 'antenna.html'), antennaHtml);
-  console.log('  Copied dist/antenna.html → antenna.html');
+  console.log('  Copied dist/antenna-src.html → antenna.html');
 }
 
 // Copy assets

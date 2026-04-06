@@ -66,9 +66,15 @@ function init() {
         tle: { line1: tle.line1, line2: tle.line2 },
         satrec,
       });
+
+      // Re-render track with new TLE
+      autoShowTrackForSat(noradId);
+
       showToast(`TLE refreshed for ${tle.name}`, 'success');
+      return true;
     } catch (err) {
       showToast(`TLE refresh failed: ${err.message}`, 'error');
+      return false;
     }
   });
 
