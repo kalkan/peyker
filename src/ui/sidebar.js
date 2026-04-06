@@ -42,6 +42,10 @@ export function buildSidebar(sidebar, callbacks) {
   header.innerHTML = `
     <h1>Satellite Ground Track Planner</h1>
     <div class="subtitle">2D orbit visualization &amp; planning tool</div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="./antenna.html" target="_blank" class="mobile-link" title="Anten Planlama">Anten Planlama</a>
+      <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">Yer İstasyonu Planlama</a>
+    </div>
   `;
   sidebar.append(header);
 
@@ -228,6 +232,12 @@ export function buildRightPanel(panel) {
             <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12" y2="18"/>
           </svg>
           Mobil
+        </a>
+        <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v2"/><path d="M5.64 5.64l1.41 1.41"/><path d="M3 12h2"/><path d="M5.64 18.36l1.41-1.41"/><path d="M12 19v2"/><path d="M18.36 18.36l-1.41-1.41"/><path d="M19 12h2"/><path d="M18.36 5.64l-1.41 1.41"/><circle cx="12" cy="12" r="4"/>
+          </svg>
+          Yer İstasyonu Planlama
         </a>
       </div>
     </div>
