@@ -12,7 +12,7 @@ export default defineConfig({
         dev: resolve(__dirname, 'dev.html'),
         mobile: resolve(__dirname, 'mobile-src.html'),
         antenna: resolve(__dirname, 'antenna-src.html'),
-        gsPlanner: resolve(__dirname, 'gs-planner-src.html'),
+        'gs-planner': resolve(__dirname, 'gs-planner-src.html'),
       },
     },
   },

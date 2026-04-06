@@ -42,10 +42,6 @@ export function buildSidebar(sidebar, callbacks) {
   header.innerHTML = `
     <h1>Satellite Ground Track Planner</h1>
     <div class="subtitle">2D orbit visualization &amp; planning tool</div>
-    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
-      <a href="./antenna.html" target="_blank" class="mobile-link" title="Anten Planlama">Anten Planlama</a>
-      <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">Yer İstasyonu Planlama</a>
-    </div>
   `;
   sidebar.append(header);
 
@@ -221,6 +217,12 @@ export function buildRightPanel(panel) {
     <div class="right-panel-header-row">
       <h1>Pass Analysis</h1>
       <div class="right-panel-header-links">
+        <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer Istasyonu Planlama">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+          </svg>
+          GS Plan
+        </a>
         <a href="./antenna.html" target="_blank" class="mobile-link" title="Anten Takip 3B">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>
@@ -232,12 +234,6 @@ export function buildRightPanel(panel) {
             <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12" y2="18"/>
           </svg>
           Mobil
-        </a>
-        <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3v2"/><path d="M5.64 5.64l1.41 1.41"/><path d="M3 12h2"/><path d="M5.64 18.36l1.41-1.41"/><path d="M12 19v2"/><path d="M18.36 18.36l-1.41-1.41"/><path d="M19 12h2"/><path d="M18.36 5.64l-1.41 1.41"/><circle cx="12" cy="12" r="4"/>
-          </svg>
-          Yer İstasyonu Planlama
         </a>
       </div>
     </div>

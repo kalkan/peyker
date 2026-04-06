@@ -35,7 +35,6 @@ if (existsSync(antennaPath)) {
   console.log('  Copied dist/antenna-src.html → antenna.html');
 }
 
-
 // Copy gs-planner-src.html → gs-planner.html (at repo root)
 const gsPlannerPath = join(dist, 'gs-planner-src.html');
 if (existsSync(gsPlannerPath)) {
