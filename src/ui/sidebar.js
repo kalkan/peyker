@@ -229,6 +229,12 @@ export function buildRightPanel(panel) {
           </svg>
           Mobil
         </a>
+        <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v2"/><path d="M5.64 5.64l1.41 1.41"/><path d="M3 12h2"/><path d="M5.64 18.36l1.41-1.41"/><path d="M12 19v2"/><path d="M18.36 18.36l-1.41-1.41"/><path d="M19 12h2"/><path d="M18.36 5.64l-1.41 1.41"/><circle cx="12" cy="12" r="4"/>
+          </svg>
+          Yer İstasyonu Planlama
+        </a>
       </div>
     </div>
     <div class="subtitle">Ground station visibility &amp; overlap</div>
