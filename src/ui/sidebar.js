@@ -42,6 +42,10 @@ export function buildSidebar(sidebar, callbacks) {
   header.innerHTML = `
     <h1>Satellite Ground Track Planner</h1>
     <div class="subtitle">2D orbit visualization &amp; planning tool</div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="./antenna.html" target="_blank" class="mobile-link" title="Anten Planlama">Anten Planlama</a>
+      <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer İstasyonu Planlama">Yer İstasyonu Planlama</a>
+    </div>
   `;
   sidebar.append(header);
 

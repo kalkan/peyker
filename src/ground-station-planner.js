@@ -1,3 +1,6 @@
+import { getState, loadState, setState, subscribe } from './ui/state.js';
+import { DEFAULT_GROUND_STATIONS } from './sat/presets.js';
+import { computeCoverageRadius } from './ui/controls.js';
 import './styles/gs-planner.css';
 
 const L = window.L;
@@ -5,6 +8,7 @@ const L = window.L;
 if (!L) {
   document.body.innerHTML = '<div style="padding:16px;color:#fff;background:#0a0f1a;font-family:system-ui">Leaflet yüklenemedi. Lütfen bağlantınızı kontrol edip sayfayı yenileyin.</div>';
 }
+
 import { getState, loadState, setState, subscribe } from './ui/state.js';
 import { DEFAULT_GROUND_STATIONS } from './sat/presets.js';
 import { computeCoverageRadius } from './ui/controls.js';
@@ -252,4 +256,5 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
 
+if (L) init();
 if (L) init();
