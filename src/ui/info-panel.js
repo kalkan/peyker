@@ -86,10 +86,11 @@ export function renderInfoPanel(container) {
     grid.append(ageLabelEl, ageValueEl);
 
     // Source label
+    const tleSource = sat.tle && sat.tle.source ? sat.tle.source : 'CelesTrak';
     if (sat.metadata && sat.metadata.source) {
-      addRow(grid, 'Data Source', sat.metadata.source);
+      addRow(grid, 'Data Source', `${sat.metadata.source} / TLE: ${tleSource}`);
     } else {
-      addRow(grid, 'Data Source', 'TLE-only (CelesTrak)');
+      addRow(grid, 'Data Source', `TLE: ${tleSource}`);
     }
   }
 

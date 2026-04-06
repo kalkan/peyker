@@ -63,14 +63,15 @@ function init() {
       const satrec = parseTLE(tle.line1, tle.line2);
       updateSatellite(noradId, {
         name: tle.name,
-        tle: { line1: tle.line1, line2: tle.line2 },
+        tle: { line1: tle.line1, line2: tle.line2, source: tle.source },
         satrec,
       });
 
       // Re-render track with new TLE
       autoShowTrackForSat(noradId);
 
-      showToast(`TLE refreshed for ${tle.name}`, 'success');
+      const srcLabel = tle.source ? ` (${tle.source})` : '';
+      showToast(`TLE refreshed for ${tle.name}${srcLabel}`, 'success');
       return true;
     } catch (err) {
       showToast(`TLE refresh failed: ${err.message}`, 'error');
@@ -237,7 +238,7 @@ async function addSatellite(noradId, presetName) {
 
     updateSatellite(noradId, {
       name: tle.name,
-      tle: { line1: tle.line1, line2: tle.line2 },
+      tle: { line1: tle.line1, line2: tle.line2, source: tle.source },
       satrec,
     });
 
@@ -306,7 +307,7 @@ async function restoreOneSatellite(noradId, retries = 2) {
       const satrec = parseTLE(tle.line1, tle.line2);
       updateSatellite(noradId, {
         name: tle.name,
-        tle: { line1: tle.line1, line2: tle.line2 },
+        tle: { line1: tle.line1, line2: tle.line2, source: tle.source },
         satrec,
       });
       fetchMetadata(noradId);
