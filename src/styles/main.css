@@ -1443,6 +1443,45 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-style: italic;
 }
 
+/* Overlap day filter */
+.overlap-day-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.overlap-filter-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.overlap-day-btn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xs);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.overlap-day-btn:hover {
+  background: rgba(93, 170, 255, 0.08);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.overlap-day-btn.active {
+  background: rgba(93, 170, 255, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .overlap-card {
   background: var(--bg-glass);
   border: 1px solid var(--border-subtle);

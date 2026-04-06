@@ -7,10 +7,11 @@
 import { getState, getActiveGs } from './state.js';
 import { predictPasses } from '../sat/propagate.js';
 
-// Cache: { key, overlaps, computedAt }
+// Cache: { key, overlaps, computedAt, days }
 let overlapCache = null;
 const CACHE_TTL = 120000; // 2 minutes
-const ANALYSIS_DAYS = 30;
+const DAY_OPTIONS = [7, 10, 14, 21, 30];
+let selectedDays = 7;
 
 /**
  * Render the overlap analysis panel.
@@ -19,20 +20,41 @@ export function renderOverlapPanel(container) {
   const state = getState();
   container.innerHTML = '';
 
+  // Day filter row
+  const filterRow = document.createElement('div');
+  filterRow.className = 'overlap-day-filter';
+  const filterLabel = document.createElement('span');
+  filterLabel.textContent = 'Analiz Suresi: ';
+  filterLabel.className = 'overlap-filter-label';
+  filterRow.append(filterLabel);
+
+  for (const d of DAY_OPTIONS) {
+    const btn = document.createElement('button');
+    btn.className = 'overlap-day-btn' + (d === selectedDays ? ' active' : '');
+    btn.textContent = `${d}g`;
+    btn.addEventListener('click', () => {
+      selectedDays = d;
+      overlapCache = null; // invalidate cache on filter change
+      renderOverlapPanel(container);
+    });
+    filterRow.append(btn);
+  }
+  container.append(filterRow);
+
   const satsWithTle = state.satellites.filter(s => s.satrec);
 
   if (satsWithTle.length < 2) {
-    container.innerHTML = '<div class="empty-state">Add at least 2 satellites to analyze overlaps</div>';
+    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'Add at least 2 satellites to analyze overlaps' }));
     return;
   }
 
   const gs = getActiveGs();
   if (!gs) {
-    container.innerHTML = '<div class="empty-state">No ground station configured</div>';
+    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'No ground station configured' }));
     return;
   }
   const now = Date.now();
-  const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',');
+  const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',') + ':' + selectedDays;
 
   if (overlapCache && overlapCache.key === cacheKey && (now - overlapCache.computedAt) < CACHE_TTL) {
     buildOverlapUI(container, overlapCache.overlaps, satsWithTle);
@@ -41,7 +63,7 @@ export function renderOverlapPanel(container) {
 
   const allPasses = [];
   for (const sat of satsWithTle) {
-    const passes = predictPasses(sat.satrec, gs, ANALYSIS_DAYS);
+    const passes = predictPasses(sat.satrec, gs, selectedDays);
     for (const p of passes) {
       allPasses.push({ ...p, sat });
     }
@@ -112,7 +134,7 @@ function buildOverlapUI(container, overlaps, sats) {
   if (overlaps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = `No overlapping passes in the next ${ANALYSIS_DAYS} days`;
+    empty.textContent = `No overlapping passes in the next ${selectedDays} days`;
     container.append(empty);
     return;
   }
@@ -145,7 +167,7 @@ function buildOverlapUI(container, overlaps, sats) {
 
   const pairTitle = document.createElement('div');
   pairTitle.className = 'overlap-pair-title';
-  pairTitle.textContent = `Pair Summary (${ANALYSIS_DAYS} days)`;
+  pairTitle.textContent = `Pair Summary (${selectedDays} days)`;
   pairSection.append(pairTitle);
 
   const maxCount = pairs[0].count;
@@ -243,7 +265,7 @@ function buildOverlapUI(container, overlaps, sats) {
 
   const note = document.createElement('div');
   note.className = 'pass-note';
-  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} (${ANALYSIS_DAYS} days) — times in TR (UTC+3)`;
+  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} (${selectedDays} days) — times in TR (UTC+3)`;
   container.append(note);
 }
 
