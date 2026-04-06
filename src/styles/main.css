@@ -542,8 +542,8 @@ html, body {
 /* Collapsible body */
 .sidebar-section .section-body {
   overflow: hidden;
-  max-height: 1000px;
-  transition: max-height 0.3s ease, opacity 0.2s ease;
+  max-height: none;
+  transition: opacity 0.2s ease;
   opacity: 1;
 }
 
