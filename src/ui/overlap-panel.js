@@ -1,7 +1,7 @@
 /**
  * Pass overlap analysis panel.
  * Finds time windows where multiple satellites are simultaneously
- * visible from the ground station over the next 7 days.
+ * visible from the ground station over the configured analysis window.
  */
 
 import { getState, getActiveGs } from './state.js';
@@ -10,6 +10,7 @@ import { predictPasses } from '../sat/propagate.js';
 // Cache: { key, overlaps, computedAt }
 let overlapCache = null;
 const CACHE_TTL = 120000; // 2 minutes
+const ANALYSIS_DAYS = 30;
 
 /**
  * Render the overlap analysis panel.
@@ -40,7 +41,7 @@ export function renderOverlapPanel(container) {
 
   const allPasses = [];
   for (const sat of satsWithTle) {
-    const passes = predictPasses(sat.satrec, gs, 14);
+    const passes = predictPasses(sat.satrec, gs, ANALYSIS_DAYS);
     for (const p of passes) {
       allPasses.push({ ...p, sat });
     }
@@ -111,7 +112,7 @@ function buildOverlapUI(container, overlaps, sats) {
   if (overlaps.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No overlapping passes in the next 14 days';
+    empty.textContent = `No overlapping passes in the next ${ANALYSIS_DAYS} days`;
     container.append(empty);
     return;
   }
@@ -144,7 +145,7 @@ function buildOverlapUI(container, overlaps, sats) {
 
   const pairTitle = document.createElement('div');
   pairTitle.className = 'overlap-pair-title';
-  pairTitle.textContent = 'Pair Summary (14 days)';
+  pairTitle.textContent = `Pair Summary (${ANALYSIS_DAYS} days)`;
   pairSection.append(pairTitle);
 
   const maxCount = pairs[0].count;
@@ -242,7 +243,7 @@ function buildOverlapUI(container, overlaps, sats) {
 
   const note = document.createElement('div');
   note.className = 'pass-note';
-  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} (14 days) — times in TR (UTC+3)`;
+  note.textContent = `${overlaps.length} overlap${overlaps.length !== 1 ? 's' : ''} (${ANALYSIS_DAYS} days) — times in TR (UTC+3)`;
   container.append(note);
 }
 

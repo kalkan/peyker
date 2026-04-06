@@ -9,6 +9,7 @@ import { predictPasses } from '../sat/propagate.js';
 // Cache: { noradId, passes, computedAt }
 let passCache = null;
 const CACHE_TTL = 60000; // 1 minute
+const ANALYSIS_DAYS = 30;
 
 /**
  * Invalidate the pass cache (e.g. when satellite selection changes).
@@ -66,7 +67,7 @@ export function renderPassesPanel(container) {
   }
 
   // Compute passes synchronously so countdown stays in sync with map overlay
-  const allPasses = predictPasses(sat.satrec, gs, 14);
+  const allPasses = predictPasses(sat.satrec, gs, ANALYSIS_DAYS);
   passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
   const minEl = state.minElevation || 0;
   const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
@@ -106,7 +107,7 @@ function buildPassUI(container, passes, satName) {
   container.append(filterRow);
 
   if (passes.length === 0) {
-    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: 'No passes in the next 14 days' }));
+    container.append(Object.assign(document.createElement('div'), { className: 'empty-state', textContent: `No passes in the next ${ANALYSIS_DAYS} days` }));
     return;
   }
 
@@ -198,7 +199,7 @@ function buildPassUI(container, passes, satName) {
 
   const note = document.createElement('div');
   note.className = 'pass-note';
-  note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} (14 days) — times in TR (UTC+3)`;
+  note.textContent = `${passes.length} pass${passes.length !== 1 ? 'es' : ''} (${ANALYSIS_DAYS} days) — times in TR (UTC+3)`;
   container.append(note);
 }
 
