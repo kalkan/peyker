@@ -551,6 +551,24 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
     className: 'sensor-cursor-tooltip',
   });
 
+  // Clickable popup with Sezen link for the footprint center
+  const centerLat = rect.center[0];
+  const centerLon = rect.center[1];
+  const sezenUrl = `http://kaankalkan.com/sezen/?lat=${centerLat.toFixed(6)}&lon=${centerLon.toFixed(6)}`;
+  const popupHtml = `
+    <div style="font-size:12px;">
+      <b>${sat.name}</b><br>
+      ${timeStr}<br>
+      Lat: ${centerLat.toFixed(6)}°<br>
+      Lon: ${centerLon.toFixed(6)}°<br>
+      Alt: ${tp.alt.toFixed(0)} km<br>
+      <a href="${sezenUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;padding:4px 10px;background:#58a6ff;color:#fff;text-decoration:none;border-radius:4px;font-weight:600;">Sezen'de Aç</a>
+    </div>
+  `;
+  poly.bindPopup(popupHtml);
+  centerMarker.bindPopup(popupHtml);
+  bigMarker.bindPopup(popupHtml);
+
   group.addTo(map);
   timeCursorLayer = group;
 }
