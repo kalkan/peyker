@@ -33,6 +33,7 @@ let targetName = '';
 let satellites = [];          // { noradId, name, color, satrec, enabled }
 let analysisResults = null;   // from analyzeAll()
 let running = false;
+let analysisGeneration = 0;  // bumped on each new target — stale runs abort
 let selectedOpp = null;       // currently highlighted opportunity
 let oppLayers = L.layerGroup();
 let geomCanvas = null;
@@ -110,12 +111,17 @@ function setTarget(lat, lon, name) {
   renderRightContent();
 }
 
-/** Auto-run analysis if there are enabled satellites with TLE loaded. */
+/** Auto-run analysis whenever target changes — cancels stale runs. */
 function autoAnalyze() {
   const ready = satellites.filter(s => s.enabled && s.satrec);
-  if (ready.length > 0 && targetLat != null && !running) {
+  if (ready.length === 0 || targetLat == null) return;
+  // Bump generation so any in-flight run will discard its results
+  analysisGeneration++;
+  if (!running) {
     runAnalysis();
   }
+  // If already running, the generation mismatch will trigger a re-run
+  // once the current one finishes (see end of runAnalysis).
 }
 
 function applyUrlTarget() {
@@ -187,29 +193,42 @@ function removeSatellite(noradId) {
 
 async function runAnalysis() {
   if (running) return;
-  if (targetLat == null || targetLon == null) { toast('Haritaya tiklayarak hedef secin', 'error'); return; }
+  if (targetLat == null || targetLon == null) return;
   const enabled = satellites.filter(s => s.enabled && s.satrec);
-  if (enabled.length === 0) { toast('TLE yuklenmis en az 1 uydu secin', 'error'); return; }
+  if (enabled.length === 0) return;
 
   running = true;
+  const myGen = analysisGeneration;
   analysisResults = null;
   selectedOpp = null;
   oppLayers.clearLayers();
   renderRightContent();
+  renderLeftContent();
 
   try {
     const settings = { MAX_ROLL_DEG: maxRollDeg, SEARCH_HORIZON_DAYS: horizonDays };
-    analysisResults = await analyzeAll(enabled, targetLat, targetLon, settings, (result) => {
-      // Progressive render: update right panel as each satellite completes
-      renderRightContent();
+    const results = await analyzeAll(enabled, targetLat, targetLon, settings, () => {
+      // Progressive render only if this run is still current
+      if (myGen === analysisGeneration) renderRightContent();
     });
+    // Only apply if target hasn't changed while we were computing
+    if (myGen === analysisGeneration) {
+      analysisResults = results;
+    }
   } catch (err) {
-    toast(`Analiz hatasi: ${err.message}`, 'error');
+    if (myGen === analysisGeneration) {
+      toast(`Analiz hatasi: ${err.message}`, 'error');
+    }
   }
 
   running = false;
   renderRightContent();
   renderLeftContent();
+
+  // If the target changed during this run, re-run for the new target
+  if (myGen !== analysisGeneration) {
+    runAnalysis();
+  }
 }
 
 /* ───── Map visualization ───── */
