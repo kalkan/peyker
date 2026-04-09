@@ -377,6 +377,11 @@ function renderLeftContent() {
 function buildTargetSection() {
   const sec = el('div', 'ip-section');
   sec.innerHTML = '<div class="ip-section-title">Hedef Nokta</div>';
+
+  // Location search (Nominatim)
+  sec.append(buildLocationSearch());
+
+  // Manual coordinate inputs
   sec.append(buildTargetInputs());
 
   if (targetLat != null && targetLon != null) {
@@ -387,10 +392,93 @@ function buildTargetSection() {
     sec.append(card);
   } else {
     const hint = el('div', 'ip-hint');
-    hint.textContent = 'Haritaya tiklayarak veya koordinat girerek hedef secin';
+    hint.textContent = 'Arama yapin, haritaya tiklayin veya koordinat girin';
     sec.append(hint);
   }
   return sec;
+}
+
+let searchTimeout = null;
+let lastSearchTime = 0;
+
+function buildLocationSearch() {
+  const wrap = el('div', 'ip-search-wrap');
+
+  const input = el('input', 'ip-input');
+  input.type = 'text';
+  input.placeholder = 'Konum ara (sehir, adres, yer...)';
+  input.autocomplete = 'off';
+  input.id = 'ip-search';
+
+  const results = el('div', 'ip-search-results');
+  results.style.display = 'none';
+
+  function hide() { results.style.display = 'none'; results.innerHTML = ''; }
+
+  async function search(q) {
+    if (q.length < 2) { hide(); return; }
+    const now = Date.now();
+    const wait = Math.max(0, 1000 - (now - lastSearchTime));
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastSearchTime = Date.now();
+
+    results.innerHTML = '<div class="ip-search-item ip-search-loading">Araniyor...</div>';
+    results.style.display = 'block';
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'tr' } });
+      const data = await res.json();
+      results.innerHTML = '';
+
+      if (data.length === 0) {
+        results.innerHTML = '<div class="ip-search-item ip-search-loading">Sonuc bulunamadi</div>';
+        setTimeout(hide, 2000);
+        return;
+      }
+
+      for (const place of data) {
+        const item = el('div', 'ip-search-item');
+        item.textContent = place.display_name;
+        item.addEventListener('click', () => {
+          const lat = parseFloat(place.lat);
+          const lon = parseFloat(place.lon);
+          const name = place.display_name.split(',')[0];
+          setTarget(lat, lon, name);
+          if (place.boundingbox) {
+            const bb = place.boundingbox.map(Number);
+            map.flyToBounds([[bb[0], bb[2]], [bb[1], bb[3]]], { maxZoom: 10, duration: 1 });
+          } else {
+            map.flyTo([lat, lon], 10, { duration: 1 });
+          }
+          input.value = name;
+          hide();
+          renderLeftContent();
+          autoAnalyze();
+        });
+        results.append(item);
+      }
+    } catch {
+      results.innerHTML = '<div class="ip-search-item ip-search-loading">Arama hatasi</div>';
+      setTimeout(hide, 2000);
+    }
+  }
+
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const val = input.value.trim();
+    if (val) searchTimeout = setTimeout(() => search(val), 600);
+    else hide();
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hide(); input.blur(); } });
+
+  // Close results when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) hide();
+  });
+
+  wrap.append(input, results);
+  return wrap;
 }
 
 function buildTargetInputs() {

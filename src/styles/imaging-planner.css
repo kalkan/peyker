@@ -136,6 +136,54 @@ body {
   margin-bottom: 8px;
 }
 
+/* === Location search === */
+
+.ip-search-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.ip-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--ip-panel-bg);
+  border: 1px solid var(--ip-border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.ip-search-item {
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ip-search-item:hover {
+  background: var(--ip-accent-soft);
+  color: var(--ip-accent);
+}
+
+.ip-search-loading {
+  color: var(--ip-text-dim);
+  font-style: italic;
+  cursor: default;
+}
+
+.ip-search-loading:hover {
+  background: transparent;
+  color: var(--ip-text-dim);
+}
+
 .ip-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
