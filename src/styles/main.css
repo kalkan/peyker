@@ -155,19 +155,20 @@ html, body {
 
 .right-panel-header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .mobile-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--accent);
   text-decoration: none;
-  padding: 4px 10px;
+  padding: 3px 7px;
   border: 1px solid rgba(93, 170, 255, 0.25);
   border-radius: 14px;
   transition: all var(--transition);
@@ -185,7 +186,10 @@ html, body {
 
 .right-panel-header-links {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  max-width: 210px;
 }
 
 #right-panel .sidebar-section {

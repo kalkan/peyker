@@ -79,10 +79,11 @@ function initMap() {
   L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
   oppLayers.addTo(map);
 
-  // Click to pick target
+  // Click to pick target — auto-run analysis
   map.on('click', (e) => {
     setTarget(e.latlng.lat, e.latlng.lng, '');
     renderLeftContent();
+    autoAnalyze();
   });
 
   setTimeout(() => map.invalidateSize(), 100);
@@ -109,6 +110,14 @@ function setTarget(lat, lon, name) {
   renderRightContent();
 }
 
+/** Auto-run analysis if there are enabled satellites with TLE loaded. */
+function autoAnalyze() {
+  const ready = satellites.filter(s => s.enabled && s.satrec);
+  if (ready.length > 0 && targetLat != null && !running) {
+    runAnalysis();
+  }
+}
+
 function applyUrlTarget() {
   try {
     const p = new URLSearchParams(window.location.search);
@@ -121,6 +130,8 @@ function applyUrlTarget() {
       setTarget(lat, lon, name);
       map.flyTo([lat, lon], 6, { duration: 1 });
       renderLeftContent();
+      // Wait a tick for TLEs to load, then auto-analyze
+      setTimeout(() => autoAnalyze(), 2000);
     }
   } catch { /* ignore */ }
 }
@@ -383,6 +394,7 @@ function buildTargetInputs() {
     setTarget(la, lo, '');
     map.flyTo([la, lo], Math.max(map.getZoom(), 6), { duration: 0.8 });
     renderLeftContent();
+    autoAnalyze();
   });
 
   row.append(latIn, lonIn, btn);
