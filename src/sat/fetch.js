@@ -100,7 +100,12 @@ async function fetchWithTimeout(url, ms = 10000) {
 
 /**
  * Fetch TLE data for a satellite by NORAD catalog number.
- * Tries multiple sources with automatic fallback.
+ *
+ * Queries all configured sources in parallel and returns the first
+ * successful response. This significantly reduces latency when the
+ * primary source is slow or degraded, and also improves resilience
+ * because a single fast source is enough.
+ *
  * Returns { line1, line2, name, source } or throws on failure.
  */
 export async function fetchTLE(noradId) {
@@ -108,28 +113,31 @@ export async function fetchTLE(noradId) {
   const cached = getCachedTLE(noradId);
   if (cached) return cached;
 
+  // Race all sources in parallel — first success wins.
   const errors = [];
-  for (const src of TLE_SOURCES) {
-    try {
-      const response = await fetchWithTimeout(src.url(noradId));
-      if (!response.ok) {
-        errors.push(`${src.name}: HTTP ${response.status}`);
-        continue;
-      }
-      const text = await response.text();
-      const result = src.parse(text, noradId);
-      if (result) {
-        result.source = src.name;
-        setTLECache(noradId, result);
-        return result;
-      }
-      errors.push(`${src.name}: no data`);
-    } catch (err) {
-      errors.push(`${src.name}: ${err.name === 'AbortError' ? 'timeout' : err.message}`);
-    }
-  }
+  const attempts = TLE_SOURCES.map(async (src) => {
+    const response = await fetchWithTimeout(src.url(noradId));
+    if (!response.ok) throw new Error(`${src.name}: HTTP ${response.status}`);
+    const text = await response.text();
+    const result = src.parse(text, noradId);
+    if (!result) throw new Error(`${src.name}: no data`);
+    result.source = src.name;
+    return result;
+  });
 
-  throw new Error(`All TLE sources failed for #${noradId} (${errors.join('; ')})`);
+  // Use Promise.any (first fulfilled). If all reject, throw with details.
+  try {
+    const result = await Promise.any(attempts);
+    setTLECache(noradId, result);
+    return result;
+  } catch (err) {
+    // Promise.any rejects with AggregateError — collect messages.
+    const reasons = (err.errors || []).map(e => {
+      if (e.name === 'AbortError') return 'timeout';
+      return e.message || String(e);
+    });
+    throw new Error(`All TLE sources failed for #${noradId} (${reasons.join('; ')})`);
+  }
 }
 
 /**

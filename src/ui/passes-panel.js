@@ -5,6 +5,20 @@
 
 import { getState, setState, findSatellite, getActiveGs } from './state.js';
 import { predictPasses } from '../sat/propagate.js';
+import { sunElevation } from '../sat/sun.js';
+
+// Daylight threshold: above -2° ≈ civil twilight — enough for EO imaging.
+const DAYLIGHT_MIN_SUN_ELEV = -2;
+
+/**
+ * Filter passes so only those where the ground station is in daylight at TCA
+ * are kept. A pass is considered "daylight" if the Sun elevation at the
+ * TCA time, seen from the ground station, is above DAYLIGHT_MIN_SUN_ELEV.
+ */
+function filterDaylightPasses(passes, gs) {
+  if (!gs) return passes;
+  return passes.filter(p => sunElevation(p.tca, gs.lat, gs.lon) >= DAYLIGHT_MIN_SUN_ELEV);
+}
 
 // Cache: { noradId, passes, computedAt }
 let passCache = null;
@@ -70,8 +84,7 @@ export function renderPassesPanel(container) {
 
   // Use cache if same satellite and recent
   if (passCache && passCache.noradId === sat.noradId && (now - passCache.computedAt) < CACHE_TTL) {
-    const minEl = state.minElevation || 0;
-    const filteredPasses = minEl > 0 ? passCache.passes.filter(p => p.maxEl >= minEl) : passCache.passes;
+    const filteredPasses = applyFilters(passCache.passes, state, gs);
     buildPassUI(container, filteredPasses, sat.name);
     return;
   }
@@ -79,9 +92,16 @@ export function renderPassesPanel(container) {
   // Compute passes synchronously so countdown stays in sync with map overlay
   const allPasses = predictPasses(sat.satrec, gs, ANALYSIS_DAYS);
   passCache = { noradId: sat.noradId, passes: allPasses, computedAt: Date.now() };
-  const minEl = state.minElevation || 0;
-  const passes = minEl > 0 ? allPasses.filter(p => p.maxEl >= minEl) : allPasses;
+  const passes = applyFilters(allPasses, state, gs);
   buildPassUI(container, passes, sat.name);
+}
+
+function applyFilters(passes, state, gs) {
+  let out = passes;
+  const minEl = state.minElevation || 0;
+  if (minEl > 0) out = out.filter(p => p.maxEl >= minEl);
+  if (state.daylightOnly) out = filterDaylightPasses(out, gs);
+  return out;
 }
 
 /**
@@ -114,6 +134,22 @@ function buildPassUI(container, passes, satName) {
     setState({ minElevation: parseInt(filterInput.value, 10) });
   });
   filterRow.append(filterLabel, filterInput);
+
+  // Daylight only toggle
+  const dayLabel = document.createElement('label');
+  dayLabel.className = 'pass-daylight-toggle';
+  dayLabel.title = 'Sadece gündüz geçişlerini göster (GS üzerinde Güneş > -2°)';
+  const dayInput = document.createElement('input');
+  dayInput.type = 'checkbox';
+  dayInput.checked = getState().daylightOnly === true;
+  dayInput.addEventListener('change', () => {
+    setState({ daylightOnly: dayInput.checked });
+  });
+  const daySun = document.createElement('span');
+  daySun.textContent = '☀ Gündüz';
+  dayLabel.append(dayInput, daySun);
+  filterRow.append(dayLabel);
+
   container.append(filterRow);
 
   if (passes.length === 0) {

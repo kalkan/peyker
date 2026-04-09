@@ -4,8 +4,11 @@
  * visible from the ground station over the configured analysis window.
  */
 
-import { getState, getActiveGs } from './state.js';
+import { getState, setState, getActiveGs } from './state.js';
 import { predictPasses } from '../sat/propagate.js';
+import { sunElevation } from '../sat/sun.js';
+
+const DAYLIGHT_MIN_SUN_ELEV = -2;
 
 // Cache: { key, overlaps, computedAt, days }
 let overlapCache = null;
@@ -39,6 +42,23 @@ export function renderOverlapPanel(container) {
     });
     filterRow.append(btn);
   }
+
+  // Daylight only toggle
+  const dayLabel = document.createElement('label');
+  dayLabel.className = 'overlap-daylight-toggle';
+  dayLabel.title = 'Sadece gündüz geçişlerini hesaba kat';
+  const dayInput = document.createElement('input');
+  dayInput.type = 'checkbox';
+  dayInput.checked = state.daylightOnly === true;
+  dayInput.addEventListener('change', () => {
+    overlapCache = null;
+    setState({ daylightOnly: dayInput.checked });
+  });
+  const dayText = document.createElement('span');
+  dayText.textContent = '☀ Gündüz';
+  dayLabel.append(dayInput, dayText);
+  filterRow.append(dayLabel);
+
   container.append(filterRow);
 
   const satsWithTle = state.satellites.filter(s => s.satrec);
@@ -54,16 +74,20 @@ export function renderOverlapPanel(container) {
     return;
   }
   const now = Date.now();
-  const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',') + ':' + selectedDays;
+  const cacheKey = satsWithTle.map(s => s.noradId).sort().join(',') + ':' + selectedDays + ':' + (state.daylightOnly ? 'day' : 'all');
 
   if (overlapCache && overlapCache.key === cacheKey && (now - overlapCache.computedAt) < CACHE_TTL) {
     buildOverlapUI(container, overlapCache.overlaps, satsWithTle, filterRow);
     return;
   }
 
+  const daylightOnly = state.daylightOnly === true;
   const allPasses = [];
   for (const sat of satsWithTle) {
-    const passes = predictPasses(sat.satrec, gs, selectedDays);
+    let passes = predictPasses(sat.satrec, gs, selectedDays);
+    if (daylightOnly) {
+      passes = passes.filter(p => sunElevation(p.tca, gs.lat, gs.lon) >= DAYLIGHT_MIN_SUN_ELEV);
+    }
     for (const p of passes) {
       allPasses.push({ ...p, sat });
     }

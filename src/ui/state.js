@@ -19,6 +19,7 @@ const defaultState = {
   liveInterval: 5,      // seconds
   coverageVisible: false, // ground station coverage circle
   minElevation: 0,        // minimum elevation filter for passes (degrees)
+  daylightOnly: false,    // only show passes where the ground station is in daylight
   groundStations: [...DEFAULT_GROUND_STATIONS],
   activeGsIndex: 0,       // index of active ground station
   footprintVisible: true,  // show footprint strip on map
@@ -53,6 +54,7 @@ export function loadState() {
     if (typeof parsed.liveEnabled === 'boolean') state.liveEnabled = parsed.liveEnabled;
     if (typeof parsed.coverageVisible === 'boolean') state.coverageVisible = parsed.coverageVisible;
     if (typeof parsed.minElevation === 'number') state.minElevation = parsed.minElevation;
+    if (typeof parsed.daylightOnly === 'boolean') state.daylightOnly = parsed.daylightOnly;
     if (Array.isArray(parsed.groundStations) && parsed.groundStations.length > 0) state.groundStations = parsed.groundStations;
     if (typeof parsed.footprintVisible === 'boolean') state.footprintVisible = parsed.footprintVisible;
     if (typeof parsed.activeGsIndex === 'number') state.activeGsIndex = parsed.activeGsIndex;
@@ -97,6 +99,7 @@ function persistState() {
       liveEnabled: state.liveEnabled,
       coverageVisible: state.coverageVisible,
       minElevation: state.minElevation,
+      daylightOnly: state.daylightOnly,
       groundStations: state.groundStations,
       activeGsIndex: state.activeGsIndex,
       nextColorIndex: state.nextColorIndex,

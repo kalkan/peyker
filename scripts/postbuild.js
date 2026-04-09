@@ -43,6 +43,14 @@ if (existsSync(gsPlannerPath)) {
   console.log('  Copied dist/gs-planner-src.html → gs-planner.html');
 }
 
+// Copy imaging-planner-src.html → imaging-planner.html (at repo root)
+const imagingPlannerPath = join(dist, 'imaging-planner-src.html');
+if (existsSync(imagingPlannerPath)) {
+  const imagingPlannerHtml = readFileSync(imagingPlannerPath, 'utf8');
+  writeFileSync(join(root, 'imaging-planner.html'), imagingPlannerHtml);
+  console.log('  Copied dist/imaging-planner-src.html → imaging-planner.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

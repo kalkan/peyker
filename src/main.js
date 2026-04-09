@@ -138,6 +138,58 @@ function init() {
   // Start map countdown overlay
   startCountdownOverlay();
   subscribe(() => updateCountdownOverlay());
+
+  // Apply URL target parameter (?target=lat,lon) — for cross-app links
+  // from tools like Sezen. Drops a marker and flies the map to the target.
+  applyUrlTarget();
+}
+
+/**
+ * Parse ?target=lat,lon from the URL and place a marker + fly map there.
+ * Also supports ?lat=..&lon=..
+ */
+function applyUrlTarget() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    let lat = null, lon = null, label = null;
+
+    const target = params.get('target');
+    if (target) {
+      const parts = target.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length === 2 && isFinite(parts[0]) && isFinite(parts[1])) {
+        lat = parts[0]; lon = parts[1];
+      }
+    } else if (params.has('lat') && params.has('lon')) {
+      const a = parseFloat(params.get('lat'));
+      const b = parseFloat(params.get('lon'));
+      if (isFinite(a) && isFinite(b)) { lat = a; lon = b; }
+    }
+    label = params.get('name') || params.get('label');
+
+    if (lat == null || lon == null) return;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return;
+
+    const map = getMap();
+    if (!map) return;
+
+    const marker = L.marker([lat, lon], {
+      title: label || `Target ${lat.toFixed(4)}°, ${lon.toFixed(4)}°`,
+    }).addTo(map);
+    marker.bindPopup(
+      `<strong>${label ? escapeHtml(label) : 'URL Target'}</strong><br>` +
+      `${lat.toFixed(5)}°, ${lon.toFixed(5)}°`
+    ).openPopup();
+
+    map.flyTo([lat, lon], Math.max(map.getZoom(), 6), { duration: 1.2 });
+  } catch (err) {
+    console.warn('applyUrlTarget failed:', err);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
 }
 
 /**

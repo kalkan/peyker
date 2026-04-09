@@ -13,6 +13,7 @@ export default defineConfig({
         mobile: resolve(__dirname, 'mobile-src.html'),
         antenna: resolve(__dirname, 'antenna-src.html'),
         'gs-planner': resolve(__dirname, 'gs-planner-src.html'),
+        'imaging-planner': resolve(__dirname, 'imaging-planner-src.html'),
       },
     },
   },
