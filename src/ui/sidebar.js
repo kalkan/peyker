@@ -217,6 +217,12 @@ export function buildRightPanel(panel) {
     <div class="right-panel-header-row">
       <h1>Pass Analysis</h1>
       <div class="right-panel-header-links">
+        <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Takip
+        </a>
         <a href="./imaging-planner.html" target="_blank" class="mobile-link" title="Goruntuleme Planlayici">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="12" y1="3" x2="12" y2="7"/>

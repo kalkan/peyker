@@ -51,6 +51,14 @@ if (existsSync(imagingPlannerPath)) {
   console.log('  Copied dist/imaging-planner-src.html → imaging-planner.html');
 }
 
+// Copy pass-tracker-src.html → pass-tracker.html (at repo root)
+const passTrackerPath = join(dist, 'pass-tracker-src.html');
+if (existsSync(passTrackerPath)) {
+  const passTrackerHtml = readFileSync(passTrackerPath, 'utf8');
+  writeFileSync(join(root, 'pass-tracker.html'), passTrackerHtml);
+  console.log('  Copied dist/pass-tracker-src.html → pass-tracker.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');
