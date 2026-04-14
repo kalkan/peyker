@@ -68,8 +68,8 @@ function playTone(freqs, durMs = 180, gap = 120) {
   }
 }
 
-function playAosChime() { playTone([880, 1175, 1568]); }    // rising 3-note
-function playLosChime() { playTone([1175, 880, 659]); }    // falling 3-note
+function playAosChime() { playTone([880, 1175, 1568], 600, 1100); }    // rising 3-note, ~4s
+function playLosChime() { playTone([1175, 880, 659],  600, 1100); }    // falling 3-note, ~4s
 
 function checkPassTransitions() {
   if (!passes.length) return;
