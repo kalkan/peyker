@@ -115,13 +115,13 @@ body {
 }
 
 .pt-status-badge {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  padding: 6px 20px;
-  border-radius: 20px;
-  margin-bottom: 24px;
+  padding: 7px 24px;
+  border-radius: 22px;
+  margin-bottom: 28px;
 }
 
 .pt-status-badge.waiting {
@@ -149,33 +149,33 @@ body {
 }
 
 .pt-countdown {
-  font-size: 88px;
+  font-size: 106px;
   font-weight: 800;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Mono', monospace;
   color: #e6edf3;
   letter-spacing: -2px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   line-height: 1;
 }
 
 .pt-countdown-label {
-  font-size: 16px;
+  font-size: 19px;
   color: var(--pt-dim);
-  margin-bottom: 30px;
+  margin-bottom: 34px;
 }
 
 .pt-arc-svg {
-  width: 340px;
-  height: 120px;
-  margin-bottom: 28px;
+  width: 408px;
+  height: 144px;
+  margin-bottom: 32px;
 }
 
 .pt-pass-details {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 24px;
+  gap: 28px;
   width: 100%;
-  max-width: 540px;
+  max-width: 640px;
 }
 
 .pt-detail {
@@ -183,7 +183,7 @@ body {
 }
 
 .pt-detail-value {
-  font-size: 34px;
+  font-size: 41px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
@@ -194,21 +194,21 @@ body {
 .pt-detail-value.gold { color: var(--pt-gold); }
 
 .pt-detail-label {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--pt-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .pt-times-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 20px;
+  gap: 24px;
   width: 100%;
-  max-width: 540px;
-  margin-top: 28px;
-  padding-top: 24px;
+  max-width: 640px;
+  margin-top: 32px;
+  padding-top: 28px;
   border-top: 1px solid var(--pt-border);
 }
 
@@ -217,24 +217,24 @@ body {
 }
 
 .pt-time-label {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--pt-dim);
   font-weight: 600;
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 
 .pt-time-value {
-  font-size: 26px;
+  font-size: 31px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
 }
 
 .pt-time-az {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--pt-dim);
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 /* === Right: pass list === */
@@ -246,9 +246,9 @@ body {
 }
 
 .pt-list-header {
-  padding: 18px 24px;
+  padding: 20px 26px;
   border-bottom: 1px solid var(--pt-border);
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--pt-dim);
 }
@@ -263,12 +263,12 @@ body {
 .pt-list-scroll::-webkit-scrollbar-thumb { background: var(--pt-border); border-radius: 3px; }
 
 .pt-day-header {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--pt-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 16px 16px 8px;
+  padding: 18px 18px 10px;
   position: sticky;
   top: 0;
   background: var(--pt-bg);
@@ -277,13 +277,13 @@ body {
 
 .pt-pass-row {
   display: grid;
-  grid-template-columns: 90px 90px 70px 72px 1fr;
-  gap: 12px;
+  grid-template-columns: 105px 105px 80px 85px 1fr;
+  gap: 14px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 17px;
+  font-size: 20px;
   transition: background 0.12s;
   border: 1px solid transparent;
 }
@@ -304,14 +304,14 @@ body {
 
 .pt-pass-cell {
   font-family: monospace;
-  font-size: 17px;
+  font-size: 20px;
 }
 
 .pt-el-badge {
   display: inline-block;
-  padding: 4px 10px;
-  border-radius: 5px;
-  font-size: 16px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 19px;
   font-weight: 700;
   font-family: monospace;
 }
@@ -322,7 +322,7 @@ body {
 .pt-el-vlow { background: rgba(139,148,158,0.1);  color: var(--pt-dim); }
 
 .pt-az-cell {
-  font-size: 15px;
+  font-size: 18px;
   color: var(--pt-dim);
   text-align: right;
   font-family: monospace;
@@ -331,7 +331,7 @@ body {
 .pt-empty {
   text-align: center;
   color: var(--pt-dim);
-  font-size: 18px;
+  font-size: 22px;
   padding: 60px 20px;
   font-style: italic;
 }
@@ -348,9 +348,11 @@ body {
     border-bottom: 1px solid var(--pt-border);
     padding: 24px 16px;
   }
-  .pt-countdown { font-size: 52px; }
-  .pt-detail-value { font-size: 26px; }
-  .pt-time-value { font-size: 20px; }
-  .pt-pass-row { font-size: 15px; }
-  .pt-pass-cell { font-size: 15px; }
+  .pt-countdown { font-size: 62px; }
+  .pt-detail-value { font-size: 30px; }
+  .pt-time-value { font-size: 24px; }
+  .pt-pass-row { font-size: 18px; grid-template-columns: 90px 90px 70px 75px 1fr; }
+  .pt-pass-cell { font-size: 18px; }
+  .pt-el-badge { font-size: 17px; }
+  .pt-az-cell { font-size: 16px; }
 }

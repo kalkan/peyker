@@ -29,9 +29,80 @@ let viewedIdx = -1;    // -1 = auto next
 let countdownTimer = null;
 let refreshTimer = null;
 
+// Sound notifications
+const SOUND_KEY = 'pt-sound-enabled';
+let soundEnabled = true;
+let audioCtx = null;
+let lastActivePassKey = null;   // key of currently-active pass, to detect AOS edge
+let notifiedEndKeys = new Set(); // keys of passes we've already played LOS for
+
+function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+
+function playTone(freqs, durMs = 180, gap = 120) {
+  if (!soundEnabled) return;
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  let t = ctx.currentTime;
+  for (const f of freqs) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = f;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.25, t + 0.02);
+    gain.gain.linearRampToValueAtTime(0.25, t + durMs / 1000 - 0.03);
+    gain.gain.linearRampToValueAtTime(0, t + durMs / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + durMs / 1000);
+    t += (durMs + gap) / 1000;
+  }
+}
+
+function playAosChime() { playTone([880, 1175, 1568]); }    // rising 3-note
+function playLosChime() { playTone([1175, 880, 659]); }    // falling 3-note
+
+function checkPassTransitions() {
+  if (!passes.length) return;
+  const now = Date.now();
+  const active = passes.find(p => p.aos.getTime() <= now && p.los.getTime() > now);
+  const activeKey = active ? passKey(active) : null;
+
+  // AOS: a new pass just became active
+  if (activeKey && activeKey !== lastActivePassKey) {
+    // Only chime if we're within 2 seconds of AOS (not on initial load mid-pass)
+    if (active.aos.getTime() > now - 2000) playAosChime();
+  }
+  lastActivePassKey = activeKey;
+
+  // LOS: a pass that was active just ended (los within last 2 seconds)
+  for (const p of passes) {
+    const k = passKey(p);
+    const losMs = p.los.getTime();
+    if (losMs <= now && losMs > now - 2000 && !notifiedEndKeys.has(k)) {
+      notifiedEndKeys.add(k);
+      playLosChime();
+    }
+  }
+}
+
 /* ───── Bootstrap ───── */
 
 function init() {
+  try {
+    const v = localStorage.getItem(SOUND_KEY);
+    if (v !== null) soundEnabled = v === '1';
+  } catch {}
+
   loadFromMainApp();
   buildUI();
   if (satellites.length > 0) loadTLEAndCompute();
@@ -40,6 +111,9 @@ function init() {
   refreshTimer = setInterval(() => {
     if (satellites[selectedSatIdx]?.satrec) computePasses();
   }, 60000);
+
+  // Check AOS/LOS transitions every second (runs always, even if hero not showing pass)
+  setInterval(checkPassTransitions, 1000);
 }
 
 function loadFromMainApp() {
@@ -158,6 +232,30 @@ function buildUI() {
   });
   addWrap.append(addIn, addBtn);
   top.append(addWrap);
+
+  // Sound toggle
+  const soundBtn = el('button', 'pt-back');
+  soundBtn.id = 'pt-sound-btn';
+  soundBtn.style.cursor = 'pointer';
+  const renderSoundBtn = () => {
+    soundBtn.innerHTML = soundEnabled
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7"/><path d="M19 5a9 9 0 010 14"/></svg> Ses Acik'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg> Ses Kapali';
+    soundBtn.style.color = soundEnabled ? 'var(--pt-green)' : 'var(--pt-dim)';
+    soundBtn.style.borderColor = soundEnabled ? 'rgba(63,185,80,0.4)' : 'var(--pt-border)';
+  };
+  renderSoundBtn();
+  soundBtn.addEventListener('click', () => {
+    soundEnabled = !soundEnabled;
+    try { localStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0'); } catch {}
+    if (soundEnabled) {
+      // First click enables audio ctx + test chime
+      ensureAudioCtx();
+      playTone([880], 120);
+    }
+    renderSoundBtn();
+  });
+  top.append(soundBtn);
 
   // GS label
   const gsLabel = el('span', 'pt-gs-label');
