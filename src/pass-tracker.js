@@ -9,11 +9,10 @@
  *  - Auto-refresh every minute
  */
 
-import 'leaflet/dist/leaflet.css';
 import './styles/pass-tracker.css';
 
-import { fetchTLE, searchSatellitesByName } from './sat/fetch.js';
-import { parseTLE, predictPasses, getLookAngles } from './sat/propagate.js';
+import { fetchTLE } from './sat/fetch.js';
+import { parseTLE, predictPasses } from './sat/propagate.js';
 import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js';
 
 /* ───── State ───── */
@@ -31,12 +30,21 @@ let refreshTimer = null;
 
 // Sound notifications
 const SOUND_KEY = 'pt-sound-enabled';
+const CHIME_WINDOW_MS = 60_000;  // fire within 1 min of AOS/LOS (survives tab throttling)
+const KEY_TTL_MS = 24 * 60 * 60 * 1000;  // drop notified keys older than 1 day
+
 let soundEnabled = true;
 let audioCtx = null;
-let lastActivePassKey = null;   // key of currently-active pass, to detect AOS edge
-let notifiedEndKeys = new Set(); // keys of passes we've already played LOS for
+let notifiedAosKeys = new Map();  // key → los timestamp (for cleanup)
+let notifiedLosKeys = new Map();
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
+
+function cleanupNotifiedKeys() {
+  const cutoff = Date.now() - KEY_TTL_MS;
+  for (const [k, losMs] of notifiedAosKeys) if (losMs < cutoff) notifiedAosKeys.delete(k);
+  for (const [k, losMs] of notifiedLosKeys) if (losMs < cutoff) notifiedLosKeys.delete(k);
+}
 
 function ensureAudioCtx() {
   if (!audioCtx) {
@@ -74,25 +82,26 @@ function playLosChime() { playTone([1175, 880, 659],  600, 1100); }    // fallin
 function checkPassTransitions() {
   if (!passes.length) return;
   const now = Date.now();
-  const active = passes.find(p => p.aos.getTime() <= now && p.los.getTime() > now);
-  const activeKey = active ? passKey(active) : null;
 
-  // AOS: a new pass just became active
-  if (activeKey && activeKey !== lastActivePassKey) {
-    // Only chime if we're within 2 seconds of AOS (not on initial load mid-pass)
-    if (active.aos.getTime() > now - 2000) playAosChime();
-  }
-  lastActivePassKey = activeKey;
-
-  // LOS: a pass that was active just ended (los within last 2 seconds)
   for (const p of passes) {
     const k = passKey(p);
+    const aosMs = p.aos.getTime();
     const losMs = p.los.getTime();
-    if (losMs <= now && losMs > now - 2000 && !notifiedEndKeys.has(k)) {
-      notifiedEndKeys.add(k);
+
+    // AOS: within last CHIME_WINDOW_MS and not already notified
+    if (aosMs <= now && aosMs > now - CHIME_WINDOW_MS && !notifiedAosKeys.has(k)) {
+      notifiedAosKeys.set(k, losMs);
+      playAosChime();
+    }
+
+    // LOS: within last CHIME_WINDOW_MS and not already notified
+    if (losMs <= now && losMs > now - CHIME_WINDOW_MS && !notifiedLosKeys.has(k)) {
+      notifiedLosKeys.set(k, losMs);
       playLosChime();
     }
   }
+
+  cleanupNotifiedKeys();
 }
 
 /* ───── Bootstrap ───── */
@@ -163,8 +172,31 @@ async function loadTLEAndCompute() {
 function computePasses() {
   const sat = satellites[selectedSatIdx];
   if (!sat?.satrec || !groundStation) { passes = []; renderAll(); return; }
+
+  const prevPasses = passes;
+  const prevViewed = viewedIdx;
+  const prevKey = (prevViewed >= 0 && prevPasses[prevViewed]) ? passKey(prevPasses[prevViewed]) : null;
+
   passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
-  viewedIdx = -1;
+
+  // Suppress chimes for transitions that happened before we had the pass list
+  // (prevents spurious chime on page load during a running pass)
+  const now = Date.now();
+  for (const p of passes) {
+    const k = passKey(p);
+    const losMs = p.los.getTime();
+    if (p.aos.getTime() <= now && !notifiedAosKeys.has(k)) notifiedAosKeys.set(k, losMs);
+    if (p.los.getTime() <= now && !notifiedLosKeys.has(k)) notifiedLosKeys.set(k, losMs);
+  }
+
+  // Preserve the user's selected pass across auto-refreshes
+  if (prevKey) {
+    const newIdx = passes.findIndex(p => passKey(p) === prevKey);
+    viewedIdx = newIdx >= 0 ? newIdx : -1;
+  } else {
+    viewedIdx = -1;
+  }
+
   renderAll();
 }
 
@@ -213,12 +245,29 @@ function buildUI() {
   const addBtn = el('button', 'pt-back');
   addBtn.textContent = 'Ekle';
   addBtn.style.cursor = 'pointer';
+  const flashInput = (msg, ok = false) => {
+    addIn.style.borderColor = ok ? 'var(--pt-green)' : 'var(--pt-red)';
+    addIn.placeholder = msg;
+    addIn.value = '';
+    setTimeout(() => {
+      addIn.style.borderColor = '';
+      addIn.placeholder = 'NORAD ID ekle';
+    }, 1800);
+  };
   addBtn.addEventListener('click', async () => {
     const val = addIn.value.trim();
     if (!val) return;
     const id = parseInt(val, 10);
-    if (isNaN(id)) return;
-    if (satellites.find(s => s.noradId === id)) return;
+    if (isNaN(id) || id <= 0) { flashInput('Gecersiz ID'); return; }
+    const existingIdx = satellites.findIndex(s => s.noradId === id);
+    if (existingIdx >= 0) {
+      // Already added — just switch to it
+      sel.value = existingIdx;
+      selectedSatIdx = existingIdx;
+      flashInput('Zaten eklenmis', true);
+      loadTLEAndCompute();
+      return;
+    }
     const newSat = { noradId: id, name: `SAT-${id}`, color: TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null };
     satellites.push(newSat);
     const opt = el('option');
@@ -230,6 +279,8 @@ function buildUI() {
     addIn.value = '';
     loadTLEAndCompute();
   });
+  // Enter key submits
+  addIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') addBtn.click(); });
   addWrap.append(addIn, addBtn);
   top.append(addWrap);
 
@@ -393,12 +444,14 @@ function renderHero() {
 }
 
 function buildArc(pass, isActive) {
+  // viewBox 408x144 matches CSS .pt-arc-svg size (no fractional scaling)
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'pt-arc-svg');
-  svg.setAttribute('viewBox', '0 0 280 100');
+  svg.setAttribute('viewBox', '0 0 408 144');
 
-  const arcY = Math.max(5, 85 - pass.maxEl);
-  const dotY = Math.max(8, 85 - pass.maxEl);
+  // Vertical positions
+  const baseY = 122;
+  const arcTopY = Math.max(12, baseY - pass.maxEl * 1.2);
   const color = isActive ? '#3fb950' : '#58a6ff';
 
   svg.innerHTML = `
@@ -409,19 +462,19 @@ function buildArc(pass, isActive) {
         <stop offset="100%" stop-color="${color}" stop-opacity="0.1"/>
       </linearGradient>
     </defs>
-    <line x1="0" y1="85" x2="280" y2="85" stroke="#30363d" stroke-width="1"/>
-    <path d="M14 85 Q140 ${arcY} 266 85" fill="none" stroke="url(#ag)" stroke-width="2.5" ${isActive ? '' : 'stroke-dasharray="6 4"'}/>
-    <circle cx="14" cy="85" r="3" fill="#5c6980"/>
-    <circle cx="266" cy="85" r="3" fill="#5c6980"/>
-    <circle cx="140" cy="${dotY}" r="5" fill="${color}" opacity="0.9">${isActive ? '<animate attributeName="opacity" values="0.9;0.3;0.9" dur="2s" repeatCount="indefinite"/>' : ''}</circle>
-    <text x="14" y="97" font-size="10" fill="#5c6980" font-family="sans-serif">AOS</text>
-    <text x="128" y="${dotY - 10}" font-size="11" fill="${color}" font-family="monospace" font-weight="700">${pass.maxEl.toFixed(1)}°</text>
-    <text x="250" y="97" font-size="10" fill="#5c6980" font-family="sans-serif">LOS</text>
-    <g transform="translate(134,85)">
-      <line x1="6" y1="0" x2="6" y2="-10" stroke="#5c6980" stroke-width="1.2"/>
-      <circle cx="6" cy="-10" r="3.5" fill="none" stroke="#5c6980" stroke-width="1"/>
-      <line x1="1" y1="-6" x2="-3" y2="-2" stroke="#5c6980" stroke-width="0.8"/>
-      <line x1="11" y1="-6" x2="15" y2="-2" stroke="#5c6980" stroke-width="0.8"/>
+    <line x1="0" y1="${baseY}" x2="408" y2="${baseY}" stroke="#30363d" stroke-width="1"/>
+    <path d="M20 ${baseY} Q204 ${arcTopY} 388 ${baseY}" fill="none" stroke="url(#ag)" stroke-width="3" ${isActive ? '' : 'stroke-dasharray="7 5"'}/>
+    <circle cx="20" cy="${baseY}" r="4" fill="#5c6980"/>
+    <circle cx="388" cy="${baseY}" r="4" fill="#5c6980"/>
+    <circle cx="204" cy="${arcTopY}" r="7" fill="${color}" opacity="0.9">${isActive ? '<animate attributeName="opacity" values="0.9;0.3;0.9" dur="2s" repeatCount="indefinite"/>' : ''}</circle>
+    <text x="20" y="140" font-size="13" fill="#5c6980" font-family="sans-serif" text-anchor="middle">AOS</text>
+    <text x="204" y="${arcTopY - 14}" font-size="15" fill="${color}" font-family="monospace" font-weight="700" text-anchor="middle">${pass.maxEl.toFixed(1)}°</text>
+    <text x="388" y="140" font-size="13" fill="#5c6980" font-family="sans-serif" text-anchor="middle">LOS</text>
+    <g transform="translate(196,${baseY})">
+      <line x1="8" y1="0" x2="8" y2="-13" stroke="#5c6980" stroke-width="1.4"/>
+      <circle cx="8" cy="-13" r="4.5" fill="none" stroke="#5c6980" stroke-width="1.2"/>
+      <line x1="1" y1="-8" x2="-4" y2="-3" stroke="#5c6980" stroke-width="1"/>
+      <line x1="15" y1="-8" x2="20" y2="-3" stroke="#5c6980" stroke-width="1"/>
     </g>
   `;
   return svg;
@@ -493,10 +546,14 @@ function renderList() {
     }
   }
 
-  // Scroll selected into view
+  // Scroll selected into view only if not currently visible
   requestAnimationFrame(() => {
     const sel = scroll.querySelector('.selected');
-    if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (!sel) return;
+    const sRect = scroll.getBoundingClientRect();
+    const rRect = sel.getBoundingClientRect();
+    const isVisible = rRect.top >= sRect.top && rRect.bottom <= sRect.bottom;
+    if (!isVisible) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
 }
 
