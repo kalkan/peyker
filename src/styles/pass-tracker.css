@@ -115,13 +115,13 @@ body {
 }
 
 .pt-status-badge {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  padding: 7px 24px;
-  border-radius: 22px;
-  margin-bottom: 28px;
+  padding: 8px 28px;
+  border-radius: 24px;
+  margin-bottom: 32px;
 }
 
 .pt-status-badge.waiting {
@@ -149,33 +149,33 @@ body {
 }
 
 .pt-countdown {
-  font-size: 106px;
+  font-size: 127px;
   font-weight: 800;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Mono', monospace;
   color: #e6edf3;
   letter-spacing: -2px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   line-height: 1;
 }
 
 .pt-countdown-label {
-  font-size: 19px;
+  font-size: 23px;
   color: var(--pt-dim);
-  margin-bottom: 34px;
+  margin-bottom: 38px;
 }
 
 .pt-arc-svg {
-  width: 408px;
-  height: 144px;
-  margin-bottom: 32px;
+  width: 490px;
+  height: 173px;
+  margin-bottom: 36px;
 }
 
 .pt-pass-details {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 28px;
+  gap: 32px;
   width: 100%;
-  max-width: 640px;
+  max-width: 768px;
 }
 
 .pt-detail {
@@ -183,7 +183,7 @@ body {
 }
 
 .pt-detail-value {
-  font-size: 41px;
+  font-size: 49px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
@@ -194,21 +194,21 @@ body {
 .pt-detail-value.gold { color: var(--pt-gold); }
 
 .pt-detail-label {
-  font-size: 16px;
+  font-size: 19px;
   color: var(--pt-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-top: 5px;
+  margin-top: 6px;
 }
 
 .pt-times-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 24px;
+  gap: 28px;
   width: 100%;
-  max-width: 640px;
-  margin-top: 32px;
-  padding-top: 28px;
+  max-width: 768px;
+  margin-top: 36px;
+  padding-top: 32px;
   border-top: 1px solid var(--pt-border);
 }
 
@@ -217,24 +217,24 @@ body {
 }
 
 .pt-time-label {
-  font-size: 16px;
+  font-size: 19px;
   color: var(--pt-dim);
   font-weight: 600;
   letter-spacing: 1px;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
 }
 
 .pt-time-value {
-  font-size: 31px;
+  font-size: 37px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
 }
 
 .pt-time-az {
-  font-size: 16px;
+  font-size: 19px;
   color: var(--pt-dim);
-  margin-top: 5px;
+  margin-top: 6px;
 }
 
 /* === Right: pass list === */
@@ -246,9 +246,9 @@ body {
 }
 
 .pt-list-header {
-  padding: 20px 26px;
+  padding: 22px 30px;
   border-bottom: 1px solid var(--pt-border);
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--pt-dim);
 }
@@ -263,12 +263,12 @@ body {
 .pt-list-scroll::-webkit-scrollbar-thumb { background: var(--pt-border); border-radius: 3px; }
 
 .pt-day-header {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--pt-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 18px 18px 10px;
+  padding: 20px 20px 12px;
   position: sticky;
   top: 0;
   background: var(--pt-bg);
@@ -277,13 +277,13 @@ body {
 
 .pt-pass-row {
   display: grid;
-  grid-template-columns: 105px 105px 80px 85px 1fr;
-  gap: 14px;
+  grid-template-columns: 126px 126px 96px 102px 1fr;
+  gap: 16px;
   align-items: center;
-  padding: 16px 18px;
+  padding: 18px 20px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 24px;
   transition: background 0.12s;
   border: 1px solid transparent;
 }
@@ -304,14 +304,14 @@ body {
 
 .pt-pass-cell {
   font-family: monospace;
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .pt-el-badge {
   display: inline-block;
-  padding: 5px 12px;
+  padding: 6px 14px;
   border-radius: 6px;
-  font-size: 19px;
+  font-size: 23px;
   font-weight: 700;
   font-family: monospace;
 }
@@ -322,7 +322,7 @@ body {
 .pt-el-vlow { background: rgba(139,148,158,0.1);  color: var(--pt-dim); }
 
 .pt-az-cell {
-  font-size: 18px;
+  font-size: 22px;
   color: var(--pt-dim);
   text-align: right;
   font-family: monospace;
@@ -331,7 +331,7 @@ body {
 .pt-empty {
   text-align: center;
   color: var(--pt-dim);
-  font-size: 22px;
+  font-size: 26px;
   padding: 60px 20px;
   font-style: italic;
 }
@@ -348,11 +348,11 @@ body {
     border-bottom: 1px solid var(--pt-border);
     padding: 24px 16px;
   }
-  .pt-countdown { font-size: 62px; }
-  .pt-detail-value { font-size: 30px; }
-  .pt-time-value { font-size: 24px; }
-  .pt-pass-row { font-size: 18px; grid-template-columns: 90px 90px 70px 75px 1fr; }
-  .pt-pass-cell { font-size: 18px; }
-  .pt-el-badge { font-size: 17px; }
-  .pt-az-cell { font-size: 16px; }
+  .pt-countdown { font-size: 74px; }
+  .pt-detail-value { font-size: 36px; }
+  .pt-time-value { font-size: 29px; }
+  .pt-pass-row { font-size: 22px; grid-template-columns: 108px 108px 84px 90px 1fr; }
+  .pt-pass-cell { font-size: 22px; }
+  .pt-el-badge { font-size: 20px; }
+  .pt-az-cell { font-size: 19px; }
 }
