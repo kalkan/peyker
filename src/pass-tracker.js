@@ -12,7 +12,7 @@
 import './styles/pass-tracker.css';
 
 import { fetchTLE } from './sat/fetch.js';
-import { parseTLE, predictPasses } from './sat/propagate.js';
+import { parseTLE, predictPasses, getLookAngles } from './sat/propagate.js';
 import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js';
 
 /* ───── State ───── */
@@ -30,13 +30,24 @@ let refreshTimer = null;
 
 // Sound notifications
 const SOUND_KEY = 'pt-sound-enabled';
+const NOTIF_KEY = 'pt-notif-enabled';
+const TTS_KEY = 'pt-tts-enabled';
+const WAKE_KEY = 'pt-wake-enabled';
 const CHIME_WINDOW_MS = 60_000;  // fire within 1 min of AOS/LOS (survives tab throttling)
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;  // drop notified keys older than 1 day
+const PRE_AOS_WARN_MS = [5 * 60_000, 60_000];  // 5 min and 1 min before AOS
 
 let soundEnabled = true;
+let notifEnabled = false;    // browser notifications
+let ttsEnabled = false;      // text-to-speech announcements
+let wakeEnabled = false;     // screen wake lock
+let wakeLockSentinel = null;
 let audioCtx = null;
 let notifiedAosKeys = new Map();  // key → los timestamp (for cleanup)
 let notifiedLosKeys = new Map();
+let warnedPreAosKeys = new Set();  // "${key}:${ms}" — pre-AOS warnings already fired
+let spokenKeys = new Set();        // same pattern for TTS events
+let allSatNextPass = null;         // { satIdx, aos, pass } — soonest pass across all sats
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
 
@@ -44,7 +55,77 @@ function cleanupNotifiedKeys() {
   const cutoff = Date.now() - KEY_TTL_MS;
   for (const [k, losMs] of notifiedAosKeys) if (losMs < cutoff) notifiedAosKeys.delete(k);
   for (const [k, losMs] of notifiedLosKeys) if (losMs < cutoff) notifiedLosKeys.delete(k);
+  // Clean up stale pre-AOS / TTS keys (keys format "aos:los:offset")
+  for (const k of warnedPreAosKeys) {
+    const losMs = parseInt(k.split(':')[1], 10);
+    if (losMs < cutoff) warnedPreAosKeys.delete(k);
+  }
+  for (const k of spokenKeys) {
+    const parts = k.split(':');
+    const losMs = parseInt(parts[1], 10);
+    if (losMs < cutoff) spokenKeys.delete(k);
+  }
 }
+
+/* ───── Browser notifications ───── */
+
+async function requestNotifPerm() {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const res = await Notification.requestPermission();
+  return res === 'granted';
+}
+
+function showNotif(title, body) {
+  if (!notifEnabled) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, { body, tag: 'pass-tracker', renotify: true });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => { try { n.close(); } catch {} }, 15000);
+  } catch (err) { console.warn('Notif failed:', err); }
+}
+
+/* ───── Text-to-speech ───── */
+
+function speak(text, lang = 'tr-TR') {
+  if (!ttsEnabled || !('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel();  // drop any queued
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.rate = 1.0;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    speechSynthesis.speak(u);
+  } catch (err) { console.warn('TTS failed:', err); }
+}
+
+/* ───── Wake lock ───── */
+
+async function enableWakeLock() {
+  if (!('wakeLock' in navigator)) return false;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => { wakeLockSentinel = null; });
+    return true;
+  } catch (err) { console.warn('Wake lock failed:', err); return false; }
+}
+
+async function releaseWakeLock() {
+  if (wakeLockSentinel) {
+    try { await wakeLockSentinel.release(); } catch {}
+    wakeLockSentinel = null;
+  }
+}
+
+// Re-acquire wake lock when tab becomes visible again (browsers auto-release on hide)
+document.addEventListener('visibilitychange', async () => {
+  if (wakeEnabled && document.visibilityState === 'visible' && !wakeLockSentinel) {
+    await enableWakeLock();
+  }
+});
 
 function ensureAudioCtx() {
   if (!audioCtx) {
@@ -123,22 +204,42 @@ function playTestBeep() {
 function checkPassTransitions() {
   if (!passes.length) return;
   const now = Date.now();
+  const sat = satellites[selectedSatIdx];
+  const satName = sat?.name || 'Uydu';
 
   for (const p of passes) {
     const k = passKey(p);
     const aosMs = p.aos.getTime();
     const losMs = p.los.getTime();
 
+    // Pre-AOS warnings (5 min, 1 min before) — fire within 60s of target offset
+    for (const off of PRE_AOS_WARN_MS) {
+      const target = aosMs - off;
+      const wk = `${aosMs}:${losMs}:${off}`;
+      if (target <= now && target > now - CHIME_WINDOW_MS && !warnedPreAosKeys.has(wk)) {
+        warnedPreAosKeys.add(wk);
+        const mins = Math.round(off / 60000);
+        const elStr = p.maxEl.toFixed(0);
+        showNotif(`${satName} — ${mins} dk içinde geçiş`, `Max ${elStr}°, AOS ${fmtTime(p.aos)} ${azToCompass(p.azAos)}`);
+        speak(`${satName} geçişine ${mins} dakika kaldı. Maksimum elevasyon ${elStr} derece.`);
+      }
+    }
+
     // AOS: within last CHIME_WINDOW_MS and not already notified
     if (aosMs <= now && aosMs > now - CHIME_WINDOW_MS && !notifiedAosKeys.has(k)) {
       notifiedAosKeys.set(k, losMs);
       playAosChime();
+      const elStr = p.maxEl.toFixed(0);
+      showNotif(`${satName} — Geçiş başladı`, `Max ${elStr}°, ${azToCompass(p.azAos)} → ${azToCompass(p.azLos)}`);
+      speak(`${satName} geçişi başladı. Maksimum elevasyon ${elStr} derece.`);
     }
 
     // LOS: within last CHIME_WINDOW_MS and not already notified
     if (losMs <= now && losMs > now - CHIME_WINDOW_MS && !notifiedLosKeys.has(k)) {
       notifiedLosKeys.set(k, losMs);
       playLosChime();
+      showNotif(`${satName} — Geçiş tamamlandı`, `Süre: ${Math.floor((losMs - aosMs) / 60000)} dk`);
+      speak(`${satName} geçişi tamamlandı.`);
     }
   }
 
@@ -151,11 +252,26 @@ function init() {
   try {
     const v = localStorage.getItem(SOUND_KEY);
     if (v !== null) soundEnabled = v === '1';
+    const n = localStorage.getItem(NOTIF_KEY);
+    if (n !== null) notifEnabled = n === '1';
+    const t = localStorage.getItem(TTS_KEY);
+    if (t !== null) ttsEnabled = t === '1';
+    const w = localStorage.getItem(WAKE_KEY);
+    if (w !== null) wakeEnabled = w === '1';
   } catch {}
+
+  // If notifications were previously enabled but permission is no longer granted, disable
+  if (notifEnabled && 'Notification' in window && Notification.permission !== 'granted') {
+    notifEnabled = false;
+    try { localStorage.setItem(NOTIF_KEY, '0'); } catch {}
+  }
 
   loadFromMainApp();
   buildUI();
   if (satellites.length > 0) loadTLEAndCompute();
+
+  // Restore wake lock if previously enabled
+  if (wakeEnabled) enableWakeLock();
 
   // Re-compute every 60s
   refreshTimer = setInterval(() => {
@@ -348,6 +464,84 @@ function buildUI() {
     renderSoundBtn();
   });
   top.append(soundBtn);
+
+  // Notification toggle
+  const notifBtn = el('button', 'pt-back');
+  notifBtn.style.cursor = 'pointer';
+  const renderNotifBtn = () => {
+    const supported = 'Notification' in window;
+    notifBtn.innerHTML = notifEnabled
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg> Bildirim'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Bildirim';
+    notifBtn.style.color = notifEnabled ? 'var(--pt-green)' : 'var(--pt-dim)';
+    notifBtn.style.borderColor = notifEnabled ? 'rgba(63,185,80,0.4)' : 'var(--pt-border)';
+    notifBtn.title = supported ? (notifEnabled ? 'Tarayıcı bildirimleri açık' : 'Tarayıcı bildirimlerini aç') : 'Tarayıcı desteklemiyor';
+    notifBtn.disabled = !supported;
+  };
+  renderNotifBtn();
+  notifBtn.addEventListener('click', async () => {
+    if (!notifEnabled) {
+      const ok = await requestNotifPerm();
+      if (!ok) { notifBtn.title = 'İzin reddedildi'; return; }
+      notifEnabled = true;
+    } else {
+      notifEnabled = false;
+    }
+    try { localStorage.setItem(NOTIF_KEY, notifEnabled ? '1' : '0'); } catch {}
+    renderNotifBtn();
+  });
+  top.append(notifBtn);
+
+  // TTS toggle
+  const ttsBtn = el('button', 'pt-back');
+  ttsBtn.style.cursor = 'pointer';
+  const renderTtsBtn = () => {
+    const supported = 'speechSynthesis' in window;
+    ttsBtn.innerHTML = ttsEnabled
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg> Sesli'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23"/></svg> Sesli';
+    ttsBtn.style.color = ttsEnabled ? 'var(--pt-green)' : 'var(--pt-dim)';
+    ttsBtn.style.borderColor = ttsEnabled ? 'rgba(63,185,80,0.4)' : 'var(--pt-border)';
+    ttsBtn.title = supported ? (ttsEnabled ? 'Sesli anons açık' : 'Sesli anonsu aç') : 'Tarayıcı desteklemiyor';
+    ttsBtn.disabled = !supported;
+  };
+  renderTtsBtn();
+  ttsBtn.addEventListener('click', () => {
+    ttsEnabled = !ttsEnabled;
+    try { localStorage.setItem(TTS_KEY, ttsEnabled ? '1' : '0'); } catch {}
+    if (ttsEnabled) speak('Sesli anons açık.');
+    else if ('speechSynthesis' in window) speechSynthesis.cancel();
+    renderTtsBtn();
+  });
+  top.append(ttsBtn);
+
+  // Wake lock toggle
+  const wakeBtn = el('button', 'pt-back');
+  wakeBtn.style.cursor = 'pointer';
+  const renderWakeBtn = () => {
+    const supported = 'wakeLock' in navigator;
+    wakeBtn.innerHTML = wakeEnabled
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg> Ekran Açık'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg> Uyku Modu';
+    wakeBtn.style.color = wakeEnabled ? 'var(--pt-green)' : 'var(--pt-dim)';
+    wakeBtn.style.borderColor = wakeEnabled ? 'rgba(63,185,80,0.4)' : 'var(--pt-border)';
+    wakeBtn.title = supported ? (wakeEnabled ? 'Ekran uyumayacak' : 'Ekranı uyanık tut') : 'Tarayıcı desteklemiyor';
+    wakeBtn.disabled = !supported;
+  };
+  renderWakeBtn();
+  wakeBtn.addEventListener('click', async () => {
+    if (!wakeEnabled) {
+      const ok = await enableWakeLock();
+      if (!ok) { wakeBtn.title = 'Ekran kilidi alınamadı'; return; }
+      wakeEnabled = true;
+    } else {
+      wakeEnabled = false;
+      await releaseWakeLock();
+    }
+    try { localStorage.setItem(WAKE_KEY, wakeEnabled ? '1' : '0'); } catch {}
+    renderWakeBtn();
+  });
+  top.append(wakeBtn);
 
   // GS label
   const gsLabel = el('span', 'pt-gs-label');
