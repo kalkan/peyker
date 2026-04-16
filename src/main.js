@@ -5,6 +5,7 @@
 
 import 'leaflet/dist/leaflet.css';
 import './styles/main.css';
+import './styles/shared.css';
 import { initMap, toggleCoverage, refreshGsMarkers, getMap } from './map/setup.js';
 import { renderTrack } from './map/tracks.js';
 import { updateLiveMarker, removeLiveMarker } from './map/markers.js';
@@ -14,10 +15,14 @@ import { parseTLE, propagateAt, generateGroundTrack, splitAtAntiMeridian, comput
 import { getColor } from './sat/presets.js';
 import { generateKML, downloadKML, makeKmlFilename } from './export/kml.js';
 import { predictPasses } from './sat/propagate.js';
+import { predictPassesInWorker } from './sat/sgp4-worker-client.js';
+import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
 import { getState, setState, loadState, updateSatellite, findSatellite, subscribe, getActiveGs } from './ui/state.js';
 import { buildSidebar, buildRightPanel, updateSidebar, updateSatListAndInfo, setStatus } from './ui/sidebar.js';
 import { invalidatePassCache, setPassSelectCallback } from './ui/passes-panel.js';
 import { setRefreshTleCallback } from './ui/info-panel.js';
+import { buildIcs, downloadIcs } from './util/ics-export.js';
+import { installKeyboardShortcuts, bind as bindKey, openHelp as openShortcutsHelp } from './util/keyboard-shortcuts.js';
 
 import L from 'leaflet';
 
@@ -34,9 +39,84 @@ L.Icon.Default.mergeOptions({
 
 let liveTimer = null;
 let countdownOverlayTimer = null;
-let countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+let countdownPassCache = { noradId: null, gsKey: null, passes: null, computedAt: 0 };
+let countdownComputeInFlight = null;
 const footprintLayers = new Map(); // noradId -> L.layerGroup
 let passArcGroup = null; // LayerGroup for selected pass arc
+
+const PASS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+const COUNTDOWN_MEM_TTL_MS = 60 * 1000; // 60s
+
+/** Build IDB cache key that invalidates when TLE epoch or GS changes. */
+function passCacheKey(sat, gs, days) {
+  const epoch = (sat.tle?.line1 || '').slice(18, 32).trim() || 'na';
+  const gsKey = `${gs.lat.toFixed(4)},${gs.lon.toFixed(4)},${(gs.alt || 0).toFixed(1)},${(gs.minEl || 0).toFixed(1)}`;
+  return `passes:${sat.noradId}:${epoch}:${gsKey}:${days}`;
+}
+
+function gsFingerprint(gs) {
+  return `${gs.lat.toFixed(4)},${gs.lon.toFixed(4)},${(gs.alt || 0).toFixed(1)},${(gs.minEl || 0).toFixed(1)}`;
+}
+
+async function getPassesForOverlay(sat, gs, days = 14) {
+  const now = Date.now();
+  const gsFp = gsFingerprint(gs);
+
+  // Hot path: 60s in-memory cache
+  if (countdownPassCache.noradId === sat.noradId
+    && countdownPassCache.gsKey === gsFp
+    && (now - countdownPassCache.computedAt) < COUNTDOWN_MEM_TTL_MS
+    && countdownPassCache.passes) {
+    return countdownPassCache.passes;
+  }
+
+  // IDB cache lookup keyed on TLE epoch + GS
+  const key = passCacheKey(sat, gs, days);
+  try {
+    const cached = await idbGet(key);
+    if (cached && cached.expiresAt > now && Array.isArray(cached.passes)) {
+      const passes = cached.passes.map(p => ({
+        ...p,
+        aos: new Date(p.aos), los: new Date(p.los), tca: new Date(p.tca),
+      }));
+      countdownPassCache = { noradId: sat.noradId, gsKey: gsFp, passes, computedAt: now };
+      return passes;
+    }
+  } catch { /* ignore */ }
+
+  if (!sat.tle?.line1 || !sat.tle?.line2) {
+    // Fall back to sync
+    const passes = predictPasses(sat.satrec, gs, days);
+    countdownPassCache = { noradId: sat.noradId, gsKey: gsFp, passes, computedAt: now };
+    return passes;
+  }
+
+  // Compute via worker (shared in-flight promise prevents flood)
+  if (!countdownComputeInFlight || countdownComputeInFlight.key !== key) {
+    countdownComputeInFlight = {
+      key,
+      promise: predictPassesInWorker(sat.tle.line1, sat.tle.line2, gs, days)
+        .catch(() => predictPasses(sat.satrec, gs, days))
+        .then(async (passes) => {
+          countdownPassCache = { noradId: sat.noradId, gsKey: gsFp, passes, computedAt: Date.now() };
+          try {
+            await idbSet(key, {
+              passes: passes.map(p => ({
+                ...p,
+                aos: p.aos.toISOString(),
+                los: p.los.toISOString(),
+                tca: p.tca.toISOString(),
+              })),
+              expiresAt: Date.now() + PASS_CACHE_TTL_MS,
+            });
+          } catch { /* ignore */ }
+          return passes;
+        })
+        .finally(() => { countdownComputeInFlight = null; }),
+    };
+  }
+  return countdownComputeInFlight.promise;
+}
 
 // ===== Initialize =====
 function init() {
@@ -104,7 +184,7 @@ function init() {
     if (currentSatId !== prevSelectedSatId) {
       // Satellite selection changed — invalidate both pass caches and clear arc
       invalidatePassCache();
-      countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      countdownPassCache = { noradId: null, gsKey: null, passes: null, computedAt: 0 };
       clearPassArc();
 
       // Auto-zoom to selected satellite's track
@@ -142,6 +222,209 @@ function init() {
   // Apply URL target parameter (?target=lat,lon) — for cross-app links
   // from tools like Sezen. Drops a marker and flies the map to the target.
   applyUrlTarget();
+
+  // Deep linking: ?sats=25544,43013&gs=41.01,28.97&date=2026-04-16
+  applyUrlDeepLink();
+
+  // Persist deep link state on changes
+  subscribe(() => writeUrlDeepLink());
+
+  // Install global keyboard shortcuts
+  setupKeyboardShortcuts();
+
+  // Cleanup expired IDB pass cache entries (best-effort, async)
+  idbCleanupExpired().catch(() => { /* ignore */ });
+}
+
+/**
+ * Read ?sats=, ?gs=, ?date= from URL and apply them to state.
+ * sats: comma-separated NORAD IDs to add
+ * gs:   "lat,lon[,minEl]" — sets/replaces active ground station
+ * date: ISO YYYY-MM-DD — sets selectedDate
+ */
+function applyUrlDeepLink() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+
+    const dateRaw = params.get('date');
+    if (dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      setState({ selectedDate: dateRaw });
+    }
+
+    const gsRaw = params.get('gs');
+    if (gsRaw) {
+      const parts = gsRaw.split(',').map(s => parseFloat(s.trim()));
+      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])) {
+        const lat = parts[0], lon = parts[1];
+        const minEl = isFinite(parts[2]) ? parts[2] : 10;
+        const state = getState();
+        const existing = state.groundStations || [];
+        const matchIdx = existing.findIndex(g =>
+          Math.abs(g.lat - lat) < 1e-4 && Math.abs(g.lon - lon) < 1e-4
+        );
+        if (matchIdx >= 0) {
+          setState({ activeGsIndex: matchIdx });
+        } else {
+          const gs = { name: params.get('gsName') || 'URL GS', lat, lon, alt: 0, minEl };
+          const next = [...existing, gs];
+          setState({ groundStations: next, activeGsIndex: next.length - 1 });
+        }
+      }
+    }
+
+    const satsRaw = params.get('sats');
+    if (satsRaw) {
+      const ids = satsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0);
+      const state = getState();
+      const existingIds = new Set(state.satellites.map(s => s.noradId));
+      for (const id of ids) {
+        if (!existingIds.has(id)) addSatellite(id);
+      }
+      if (ids.length > 0 && !state.selectedSatId) {
+        setState({ selectedSatId: ids[0] });
+      }
+    }
+  } catch (err) {
+    console.warn('applyUrlDeepLink failed:', err);
+  }
+}
+
+let _urlWriteScheduled = false;
+function writeUrlDeepLink() {
+  if (_urlWriteScheduled) return;
+  _urlWriteScheduled = true;
+  // Debounce so subscribe() floods don't thrash history
+  setTimeout(() => {
+    _urlWriteScheduled = false;
+    try {
+      const state = getState();
+      const params = new URLSearchParams(window.location.search);
+
+      const sats = state.satellites.map(s => s.noradId).join(',');
+      if (sats) params.set('sats', sats); else params.delete('sats');
+
+      const gs = getActiveGs();
+      if (gs) {
+        params.set('gs', `${gs.lat.toFixed(4)},${gs.lon.toFixed(4)},${(gs.minEl || 10).toFixed(0)}`);
+      } else {
+        params.delete('gs');
+      }
+
+      if (state.selectedDate) params.set('date', state.selectedDate);
+
+      const qs = params.toString();
+      const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+      window.history.replaceState(null, '', url + window.location.hash);
+    } catch { /* ignore */ }
+  }, 250);
+}
+
+/** Install global keyboard shortcuts. */
+function setupKeyboardShortcuts() {
+  installKeyboardShortcuts();
+  bindKey({
+    key: 't', label: 'Bugünün izini göster',
+    run: () => showToday(),
+  });
+  bindKey({
+    key: 'r', label: 'Seçili gün için izi yeniden çiz',
+    run: () => showSelectedDayTrack(),
+  });
+  bindKey({
+    key: 'c', label: 'Tüm izleri temizle',
+    run: () => clearTracks(),
+  });
+  bindKey({
+    key: 'l', label: 'Canlı modu aç/kapat',
+    run: () => {
+      const enabled = !getState().liveEnabled;
+      setState({ liveEnabled: enabled });
+      if (enabled) startLiveUpdates(); else stopLiveUpdates();
+    },
+  });
+  bindKey({
+    key: 'k', label: 'Kapsama dairesini aç/kapat',
+    run: () => {
+      const visible = !getState().coverageVisible;
+      setState({ coverageVisible: visible });
+      toggleCoverage(visible);
+    },
+  });
+  bindKey({
+    key: 'e', label: 'Seçili uydu izini KML olarak indir',
+    run: () => exportSelected(),
+  });
+  bindKey({
+    key: 'i', label: 'Yaklaşan geçişleri ICS takvimine indir',
+    run: () => exportSelectedPassesIcs(),
+  });
+  bindKey({
+    key: 'n', label: 'Sonraki uyduya geç',
+    run: () => cycleSelectedSat(1),
+  });
+  bindKey({
+    key: 'p', label: 'Önceki uyduya geç',
+    run: () => cycleSelectedSat(-1),
+  });
+  bindKey({
+    key: '?', label: 'Bu yardım panelini aç',
+    run: () => openShortcutsHelp(),
+  });
+}
+
+function cycleSelectedSat(direction) {
+  const state = getState();
+  if (state.satellites.length === 0) return;
+  const ids = state.satellites.map(s => s.noradId);
+  const idx = ids.indexOf(state.selectedSatId);
+  const next = ids[((idx + direction) % ids.length + ids.length) % ids.length];
+  setState({ selectedSatId: next });
+}
+
+/** Export upcoming passes for the selected satellite as an .ics file. */
+async function exportSelectedPassesIcs() {
+  const state = getState();
+  const sat = state.selectedSatId ? findSatellite(state.selectedSatId) : null;
+  const gs = getActiveGs();
+  if (!sat || !sat.satrec) {
+    showToast('Önce bir uydu seçin', 'warning');
+    return;
+  }
+  if (!gs) {
+    showToast('Önce aktif yer istasyonu tanımlayın', 'warning');
+    return;
+  }
+
+  setStatus('Geçişler hesaplanıyor...');
+  const passes = await getPassesForOverlay(sat, gs, 14);
+  if (!passes || passes.length === 0) {
+    showToast(`${sat.name} için geçiş bulunamadı`, 'warning');
+    setStatus('');
+    return;
+  }
+
+  const events = passes.map((p, i) => ({
+    uid: `pass-${sat.noradId}-${p.aos.getTime()}@peyker`,
+    start: p.aos,
+    end: p.los,
+    summary: `${sat.name} geçişi (max ${p.maxEl.toFixed(1)}°)`,
+    description:
+      `Uydu: ${sat.name} (#${sat.noradId})\n` +
+      `İstasyon: ${gs.name || 'GS'} (${gs.lat.toFixed(4)}°, ${gs.lon.toFixed(4)}°)\n` +
+      `AOS: ${p.aos.toISOString()}\n` +
+      `TCA: ${p.tca.toISOString()} – Max El: ${p.maxEl.toFixed(1)}°\n` +
+      `LOS: ${p.los.toISOString()}\n` +
+      `Süre: ${Math.round((p.los - p.aos) / 1000)} sn`,
+    location: `${gs.lat.toFixed(4)}, ${gs.lon.toFixed(4)}`,
+    alarmMinutes: 5,
+  }));
+
+  const ics = buildIcs(events, { calendarName: `${sat.name} – Yaklaşan Geçişler` });
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const filename = `${sat.name.replace(/[^a-z0-9]+/gi, '_')}_passes_${dateStr}.ics`;
+  downloadIcs(filename, ics);
+  showToast(`${events.length} geçiş ${filename} dosyasına aktarıldı`, 'success');
+  setStatus('');
 }
 
 /**
@@ -215,7 +498,7 @@ function getCallbacks() {
     onGsChanged: () => {
       // Refresh passes and map when ground station changes
       invalidatePassCache();
-      countdownPassCache = { noradId: null, passes: null, computedAt: 0 };
+      countdownPassCache = { noradId: null, gsKey: null, passes: null, computedAt: 0 };
       updateCountdownOverlay();
       refreshMapGsMarkers();
     },
@@ -830,37 +1113,29 @@ function updateCountdownOverlay() {
     el.classList.remove('visible');
     return;
   }
-  const now = Date.now();
 
-  // Cache passes for 60s per satellite
-  if (countdownPassCache.noradId !== sat.noradId || (now - countdownPassCache.computedAt) > 60000) {
-    countdownPassCache = {
-      noradId: sat.noradId,
-      passes: predictPasses(sat.satrec, gs, 14),
-      computedAt: now,
-    };
-  }
+  // Fire an async load when cache is cold — re-render when it resolves.
+  getPassesForOverlay(sat, gs, 14)
+    .then((passes) => renderCountdownOverlay(el, sat, passes))
+    .catch(() => { el.classList.remove('visible'); });
+}
 
-  const passes = countdownPassCache.passes;
+function renderCountdownOverlay(el, sat, passes) {
   if (!passes || passes.length === 0) {
     el.classList.remove('visible');
     return;
   }
-
-  // Find active or next pass
+  const now = Date.now();
   const activePass = passes.find(p => p.aos.getTime() <= now && p.los.getTime() > now);
   const nextPass = passes.find(p => p.los.getTime() > now);
   const pass = activePass || nextPass;
-
   if (!pass) {
     el.classList.remove('visible');
     return;
   }
-
   const isActive = activePass != null;
   const target = isActive ? pass.los.getTime() : pass.aos.getTime();
   const remaining = target - now;
-
   if (remaining <= 0) return;
 
   const label = isActive ? 'Geçiş bitimine kalan' : 'Geçişe kalan süre';

@@ -18,33 +18,94 @@ delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, shadowUrl: markerShadow });
 
 import { fetchTLE, searchSatellitesByName } from './sat/fetch.js';
-import { parseTLE, propagateAt } from './sat/propagate.js';
-import { analyzeAll } from './sat/opportunity.js';
+import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js';
 import { PRESETS, TRACK_COLORS } from './sat/presets.js';
+import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
+import { computeOpportunityScore } from './sat/opportunity-score.js';
+import { analyzeAllInPool } from './sat/opportunity-worker-client.js';
+import { describeTleAge } from './sat/tle-meta.js';
+import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
+import { buildIcs, downloadIcs } from './util/ics-export.js';
+import { installKeyboardShortcuts, bind, openHelp } from './util/keyboard-shortcuts.js';
+import './styles/shared.css';
 
 /* ───── State ───── */
 
 const STORAGE_KEY = 'sat-groundtrack-state';
+const PREFS_KEY = 'ip-prefs-v1';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h: TLE may shift; keep cache short
+
 let map = null;
 let targetMarker = null;
 let targetLat = null;
 let targetLon = null;
 let targetName = '';
-let satellites = [];          // { noradId, name, color, satrec, enabled }
-let analysisResults = null;   // from analyzeAll()
+let satellites = [];          // { noradId, name, color, satrec, tle, enabled }
+let analysisResults = null;
 let running = false;
-let analysisGeneration = 0;  // bumped on each new target — stale runs abort
-let selectedOpp = null;       // currently highlighted opportunity
+let analysisGeneration = 0;  // stale-run guard
+let analysisAbort = null;     // AbortController for current run
+const analysisProgress = new Map(); // noradId -> 0..1
+let selectedOpp = null;
 let oppLayers = L.layerGroup();
 let geomCanvas = null;
 
-// Settings
+// Settings (persisted in PREFS_KEY)
 let maxRollDeg = 5;
 let horizonDays = 7;
+let pitchDeg = 0;
+let presetId = 'custom';
+let sortBy = 'time';          // 'time' | 'score' | 'roll' | 'sun'
+let filterMinSun = -2;        // sun elevation threshold for displayed opps
+let filterRollPct = 100;      // % of maxRollDeg accepted (display filter)
+let timezone = 'Europe/Istanbul';
+
+const TIMEZONES = [
+  { id: 'Europe/Istanbul', label: 'TRT (UTC+3)' },
+  { id: 'UTC', label: 'UTC' },
+  { id: 'browser', label: 'Tarayıcı' },
+];
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    if (typeof p.maxRollDeg === 'number') maxRollDeg = p.maxRollDeg;
+    if (typeof p.horizonDays === 'number') horizonDays = p.horizonDays;
+    if (typeof p.pitchDeg === 'number') pitchDeg = p.pitchDeg;
+    if (typeof p.presetId === 'string') presetId = p.presetId;
+    if (typeof p.sortBy === 'string') sortBy = p.sortBy;
+    if (typeof p.filterMinSun === 'number') filterMinSun = p.filterMinSun;
+    if (typeof p.filterRollPct === 'number') filterRollPct = p.filterRollPct;
+    if (typeof p.timezone === 'string') timezone = p.timezone;
+  } catch {}
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      maxRollDeg, horizonDays, pitchDeg, presetId, sortBy, filterMinSun, filterRollPct, timezone,
+    }));
+  } catch {}
+}
+
+function applyPreset(id) {
+  const p = getPreset(id);
+  presetId = p.id;
+  if (p.id !== 'custom') {
+    maxRollDeg = p.maxRollDeg;
+    pitchDeg = Math.min(Math.abs(pitchDeg), p.maxPitchDeg) * Math.sign(pitchDeg || 1);
+    if (p.maxPitchDeg === 0) pitchDeg = 0;
+  }
+  savePrefs();
+}
 
 /* ───── Bootstrap ───── */
 
 function init() {
+  loadPrefs();
+  // Best-effort cleanup of stale opportunity cache entries.
+  idbCleanupExpired().catch(() => {});
+
   const app = document.getElementById('imaging-planner-app');
   app.innerHTML = '';
 
@@ -66,6 +127,16 @@ function init() {
   initMap();
   loadSatellitesFromMainApp();
   applyUrlTarget();
+  setupShortcuts();
+}
+
+function setupShortcuts() {
+  installKeyboardShortcuts();
+  bind({ key: 'r', label: 'Analizi yeniden çalıştır', run: () => runAnalysis(true) });
+  bind({ key: 'e', label: 'ICS olarak indir', run: () => exportIcs() });
+  bind({ key: 'c', label: 'CSV olarak indir', run: () => exportCsv() });
+  bind({ key: 'Escape', label: 'Çalışan analizi iptal et', run: () => cancelAnalysis() });
+  bind({ key: '?', label: 'Yardımı göster', run: () => openHelp() });
 }
 
 /* ───── Map ───── */
@@ -113,15 +184,15 @@ function setTarget(lat, lon, name) {
 
 /** Auto-run analysis whenever target changes — cancels stale runs. */
 function autoAnalyze() {
-  const ready = satellites.filter(s => s.enabled && s.satrec);
+  const ready = satellites.filter(s => s.enabled && s.satrec && s.tle);
   if (ready.length === 0 || targetLat == null) return;
-  // Bump generation so any in-flight run will discard its results
-  analysisGeneration++;
-  if (!running) {
+  if (running) {
+    // Bumping the generation flags the current run as stale; the in-flight
+    // run will requeue itself when it finishes.
+    analysisGeneration++;
+  } else {
     runAnalysis();
   }
-  // If already running, the generation mismatch will trigger a re-run
-  // once the current one finishes (see end of runAnalysis).
 }
 
 function applyUrlTarget() {
@@ -152,21 +223,21 @@ function loadSatellitesFromMainApp() {
     if (Array.isArray(state.satellites)) {
       for (const s of state.satellites) {
         if (s.noradId && !satellites.find(x => x.noradId === s.noradId)) {
-          satellites.push({ noradId: s.noradId, name: s.name || `SAT-${s.noradId}`, color: s.color || TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null, enabled: true });
+          satellites.push({ noradId: s.noradId, name: s.name || `SAT-${s.noradId}`, color: s.color || TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null, tle: null, enabled: true });
         }
       }
     }
   } catch { /* ignore */ }
-  // Auto-fetch TLEs
   for (const sat of satellites) fetchSatTLE(sat);
   renderLeftContent();
 }
 
 async function fetchSatTLE(sat) {
-  if (sat.satrec) return;
+  if (sat.satrec && sat.tle) return;
   try {
     const tle = await fetchTLE(sat.noradId);
     sat.name = tle.name || sat.name;
+    sat.tle = { line1: tle.line1, line2: tle.line2, source: tle.source };
     sat.satrec = parseTLE(tle.line1, tle.line2);
   } catch (err) {
     console.warn(`TLE failed for ${sat.noradId}:`, err.message);
@@ -176,7 +247,7 @@ async function fetchSatTLE(sat) {
 
 async function addSatellite(noradId, name) {
   if (satellites.find(s => s.noradId === noradId)) { toast(`#${noradId} zaten ekli`, 'error'); return; }
-  const sat = { noradId, name: name || `SAT-${noradId}`, color: TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null, enabled: true };
+  const sat = { noradId, name: name || `SAT-${noradId}`, color: TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null, tle: null, enabled: true };
   satellites.push(sat);
   renderLeftContent();
   await fetchSatTLE(sat);
@@ -191,44 +262,136 @@ function removeSatellite(noradId) {
 
 /* ───── Analysis ───── */
 
-async function runAnalysis() {
-  if (running) return;
+function cacheKey(sat, settings) {
+  // TLE epoch is the dominant freshness signal — bake it in along with the
+  // tuning parameters so a settings tweak invalidates the entry.
+  const epoch = sat.tle?.line1?.slice(18, 32) || '';
+  return `opp:${sat.noradId}:${targetLat.toFixed(4)}:${targetLon.toFixed(4)}:r${settings.MAX_ROLL_DEG}:d${settings.SEARCH_HORIZON_DAYS}:e${epoch}`;
+}
+
+async function tryCachedResult(sat, settings) {
+  try {
+    const v = await idbGet(cacheKey(sat, settings));
+    if (!v || v.expiresAt < Date.now()) return null;
+    return v.opportunities.map(o => ({ ...o, time: new Date(o.time) }));
+  } catch { return null; }
+}
+
+async function cacheResult(sat, settings, opps) {
+  try {
+    await idbSet(cacheKey(sat, settings), {
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      opportunities: opps.map(o => ({ ...o, time: o.time.toISOString() })),
+    });
+  } catch {}
+}
+
+function cancelAnalysis() {
+  if (!running) return;
+  if (analysisAbort) {
+    try { analysisAbort.abort(); } catch {}
+  }
+  toast('Analiz iptal edildi', 'error');
+}
+
+async function runAnalysis(forceRefresh = false) {
+  if (running) {
+    // Bump generation so a follow-up run is queued after the current finishes.
+    analysisGeneration++;
+    return;
+  }
   if (targetLat == null || targetLon == null) return;
-  const enabled = satellites.filter(s => s.enabled && s.satrec);
+  const enabled = satellites.filter(s => s.enabled && s.satrec && s.tle);
   if (enabled.length === 0) return;
 
   running = true;
-  const myGen = analysisGeneration;
+  const myGen = ++analysisGeneration;
   analysisResults = null;
   selectedOpp = null;
   oppLayers.clearLayers();
+  analysisProgress.clear();
+  for (const s of enabled) analysisProgress.set(s.noradId, 0);
   renderRightContent();
   renderLeftContent();
 
+  const settings = { MAX_ROLL_DEG: maxRollDeg, SEARCH_HORIZON_DAYS: horizonDays };
+  const partials = new Map();
+  const tasks = [];
+
+  // Cache lookup first — replay hits immediately so the UI doesn't wait
+  // for the worker pool to spin up when the user just toggles a setting.
+  const toCompute = [];
+  for (const sat of enabled) {
+    if (!forceRefresh) {
+      const cached = await tryCachedResult(sat, settings);
+      if (cached) {
+        const result = {
+          noradId: sat.noradId, name: sat.name, color: sat.color, satrec: sat.satrec,
+          status: cached.length ? 'available' : 'no_opportunity',
+          opportunities: cached, fromCache: true,
+        };
+        partials.set(sat.noradId, result);
+        analysisProgress.set(sat.noradId, 1);
+        continue;
+      }
+    }
+    toCompute.push(sat);
+  }
+  renderRightContent();
+
+  analysisAbort = new AbortController();
   try {
-    const settings = { MAX_ROLL_DEG: maxRollDeg, SEARCH_HORIZON_DAYS: horizonDays };
-    const results = await analyzeAll(enabled, targetLat, targetLon, settings, () => {
-      // Progressive render only if this run is still current
-      if (myGen === analysisGeneration) renderRightContent();
-    });
-    // Only apply if target hasn't changed while we were computing
+    if (toCompute.length > 0) {
+      const fresh = await analyzeAllInPool(
+        toCompute, targetLat, targetLon, settings,
+        {
+          signal: analysisAbort.signal,
+          onProgress: (id, fraction) => {
+            analysisProgress.set(id, fraction);
+            if (myGen === analysisGeneration) renderRightContent();
+          },
+          onOneComplete: (result) => {
+            partials.set(result.noradId, result);
+            // Cache only successful runs.
+            const sat = enabled.find(s => s.noradId === result.noradId);
+            if (sat && (result.status === 'available' || result.status === 'no_opportunity')) {
+              cacheResult(sat, settings, result.opportunities).catch(() => {});
+            }
+            if (myGen === analysisGeneration) renderRightContent();
+          },
+        },
+      );
+      // Merge fresh into partials (worker results already streamed via callback,
+      // but use the sorted batch as the canonical ordering source).
+      for (const r of fresh) partials.set(r.noradId, r);
+    }
     if (myGen === analysisGeneration) {
-      analysisResults = results;
+      // Reorder by satellite list, then sort: any-opps first then by first time.
+      const ordered = enabled
+        .map(s => partials.get(s.noradId))
+        .filter(Boolean)
+        .sort((a, b) => {
+          const ah = a.opportunities?.length > 0;
+          const bh = b.opportunities?.length > 0;
+          if (ah !== bh) return ah ? -1 : 1;
+          if (ah && bh) return a.opportunities[0].time.getTime() - b.opportunities[0].time.getTime();
+          return 0;
+        });
+      analysisResults = ordered;
     }
   } catch (err) {
-    if (myGen === analysisGeneration) {
-      toast(`Analiz hatasi: ${err.message}`, 'error');
+    if (err && err.name !== 'AbortError' && myGen === analysisGeneration) {
+      toast(`Analiz hatası: ${err.message}`, 'error');
     }
   }
 
   running = false;
+  analysisAbort = null;
   renderRightContent();
   renderLeftContent();
 
-  // If the target changed during this run, re-run for the new target
-  if (myGen !== analysisGeneration) {
-    runAnalysis();
-  }
+  // Coalesce — if another generation was requested mid-run, run again.
+  if (myGen !== analysisGeneration) runAnalysis();
 }
 
 /* ───── Map visualization ───── */
@@ -236,6 +399,7 @@ async function runAnalysis() {
 function showOppOnMap(opp, sat) {
   oppLayers.clearLayers();
   selectedOpp = opp;
+  selectedOpp._sat = sat;
 
   // Sub-satellite marker
   L.circleMarker([opp.subSatLat, opp.subSatLon], {
@@ -260,12 +424,51 @@ function showOppOnMap(opp, sat) {
     }
   }
 
+  // Sensor frame footprint, oriented by current preset's swath/roll/pitch.
+  renderSensorFrame();
+
   // Draw geometry diagram
   drawGeometryDiagram(opp);
 
   // Fit view
   const bounds = L.latLngBounds([[opp.subSatLat, opp.subSatLon], [targetLat, targetLon]]);
   map.flyToBounds(bounds.pad(0.5), { maxZoom: 8, duration: 0.8 });
+}
+
+/**
+ * Draw the sensor footprint rectangle on the map for the currently
+ * selected opportunity, using the active sensor preset's swath / frame
+ * height and the user's pitch slider. Re-rendered on pitch change.
+ */
+function renderSensorFrame() {
+  if (!selectedOpp || !selectedOpp._sat?.satrec) return;
+  // Build a tiny 3-point track around the opportunity time so we can
+  // reuse the existing computeFootprintRect helper without duplicating
+  // its bearing math.
+  const sat = selectedOpp._sat;
+  const t = selectedOpp.time.getTime();
+  const sample = (ms) => {
+    const p = propagateAt(sat.satrec, new Date(ms));
+    return p ? { lat: p.lat, lon: p.lon, alt: p.alt, time: new Date(ms) } : null;
+  };
+  const before = sample(t - 5000);
+  const at = sample(t);
+  const after = sample(t + 5000);
+  if (!before || !at || !after) return;
+  const preset = getPreset(presetId);
+  const w = preset.swathKm, h = preset.frameHeightKm;
+  const rect = computeFootprintRect([before, at, after], 1, w, h, selectedOpp.rollDeg, pitchDeg);
+  if (!rect) return;
+  // Strip any prior frame layer
+  if (oppLayers._frame) {
+    oppLayers.removeLayer(oppLayers._frame);
+    oppLayers._frame = null;
+  }
+  const poly = L.polygon(rect.corners, {
+    color: '#7ee787', weight: 1.5, fillColor: '#7ee787', fillOpacity: 0.12, dashArray: '4 4',
+  }).bindTooltip(`${preset.name} — ${w}×${h} km`, { sticky: true });
+  poly.addTo(oppLayers);
+  oppLayers._frame = poly;
 }
 
 /* ───── 2D Geometry diagram ───── */
@@ -510,21 +713,120 @@ function buildTargetInputs() {
 
 function buildSettingsSection() {
   const sec = el('div', 'ip-section');
-  sec.innerHTML = '<div class="ip-section-title">Ayarlar</div>';
+  sec.innerHTML = '<div class="ip-section-title">Sensör Profili & Ayarlar</div>';
 
+  // Sensor preset dropdown
+  const presetWrap = el('div', 'ip-field');
+  const presetLbl = el('label');
+  presetLbl.innerHTML = 'Sensör <span class="ip-help" title="Hazır uydu kameraları için tipik açıklık ve roll değerleri. Özel: kendi değerini gir.">?</span>';
+  presetWrap.append(presetLbl);
+  const presetSel = el('select', 'ip-select');
+  for (const p of SENSOR_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = `${p.name} — ${p.description}`;
+    if (p.id === presetId) opt.selected = true;
+    presetSel.append(opt);
+  }
+  presetSel.addEventListener('change', () => {
+    applyPreset(presetSel.value);
+    renderLeftContent();
+    autoAnalyze();
+  });
+  presetWrap.append(presetSel);
+  sec.append(presetWrap);
+
+  // Roll + horizon row
   const r1 = el('div', 'ip-field-row');
-  r1.innerHTML = `<div class="ip-field"><label>Max Roll (°)</label></div><div class="ip-field"><label>Arama (gun)</label></div>`;
+  const rollField = el('div', 'ip-field');
+  const rollLbl = el('label');
+  rollLbl.innerHTML = 'Max Roll (°) <span class="ip-help" title="Uydunun nadirden ne kadar yana eğilebileceği. Yüksek roll = daha çok fırsat ama daha düşük çözünürlük.">?</span>';
+  rollField.append(rollLbl);
   const rollIn = el('input', 'ip-input');
   rollIn.type = 'number'; rollIn.value = maxRollDeg; rollIn.min = 1; rollIn.max = 45; rollIn.step = 0.5;
-  rollIn.addEventListener('change', () => { maxRollDeg = parseFloat(rollIn.value) || 5; });
-  r1.children[0].append(rollIn);
+  rollIn.addEventListener('change', () => { maxRollDeg = parseFloat(rollIn.value) || 5; savePrefs(); autoAnalyze(); });
+  rollField.append(rollIn);
+  r1.append(rollField);
 
+  const dayField = el('div', 'ip-field');
+  const dayLbl = el('label');
+  dayLbl.textContent = 'Arama (gün)';
+  dayField.append(dayLbl);
   const dayIn = el('input', 'ip-input');
   dayIn.type = 'number'; dayIn.value = horizonDays; dayIn.min = 1; dayIn.max = 30; dayIn.step = 1;
-  dayIn.addEventListener('change', () => { horizonDays = parseInt(dayIn.value) || 7; });
-  r1.children[1].append(dayIn);
-
+  dayIn.addEventListener('change', () => { horizonDays = parseInt(dayIn.value) || 7; savePrefs(); autoAnalyze(); });
+  dayField.append(dayIn);
+  r1.append(dayField);
   sec.append(r1);
+
+  // Pitch slider — shown only when the active preset supports it.
+  const preset = getPreset(presetId);
+  if (preset.maxPitchDeg > 0) {
+    const pitchField = el('div', 'ip-field');
+    const lbl = el('label');
+    lbl.innerHTML = `Pitch (°) <span class="ip-pitch-val">${pitchDeg.toFixed(1)}</span>` +
+      ` <span class="ip-help" title="İleri/geri eğim. Çoğu sun-sync uydu pitch yapamaz; agile platformlarda time-delayed imaging için kullanılır.">?</span>`;
+    pitchField.append(lbl);
+    const sl = el('input', 'ip-slider');
+    sl.type = 'range';
+    sl.min = -preset.maxPitchDeg; sl.max = preset.maxPitchDeg; sl.step = 0.5; sl.value = pitchDeg;
+    sl.addEventListener('input', () => {
+      pitchDeg = parseFloat(sl.value);
+      lbl.querySelector('.ip-pitch-val').textContent = pitchDeg.toFixed(1);
+    });
+    sl.addEventListener('change', () => { savePrefs(); if (selectedOpp) renderSensorFrame(); });
+    pitchField.append(sl);
+    sec.append(pitchField);
+  }
+
+  // Filter row
+  const filterField = el('div', 'ip-field');
+  const filterLbl = el('label');
+  filterLbl.innerHTML = `Görünür filtre — Min güneş açısı: <span id="ip-sun-val">${filterMinSun}°</span>`;
+  filterField.append(filterLbl);
+  const sunSlider = el('input', 'ip-slider');
+  sunSlider.type = 'range'; sunSlider.min = -18; sunSlider.max = 60; sunSlider.step = 1; sunSlider.value = filterMinSun;
+  sunSlider.addEventListener('input', () => {
+    filterMinSun = parseInt(sunSlider.value);
+    document.getElementById('ip-sun-val').textContent = `${filterMinSun}°`;
+  });
+  sunSlider.addEventListener('change', () => { savePrefs(); renderRightContent(); });
+  filterField.append(sunSlider);
+  sec.append(filterField);
+
+  // Sort + timezone row
+  const r2 = el('div', 'ip-field-row');
+  const sortField = el('div', 'ip-field');
+  const sortLbl = el('label');
+  sortLbl.textContent = 'Sıralama';
+  sortField.append(sortLbl);
+  const sortSel = el('select', 'ip-select');
+  for (const [val, label] of [['time', 'Zamana göre'], ['score', 'Kaliteye göre'], ['roll', 'Roll (artan)'], ['sun', 'Güneş (azalan)']]) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    if (val === sortBy) o.selected = true;
+    sortSel.append(o);
+  }
+  sortSel.addEventListener('change', () => { sortBy = sortSel.value; savePrefs(); renderRightContent(); });
+  sortField.append(sortSel);
+  r2.append(sortField);
+
+  const tzField = el('div', 'ip-field');
+  const tzLbl = el('label');
+  tzLbl.textContent = 'Saat dilimi';
+  tzField.append(tzLbl);
+  const tzSel = el('select', 'ip-select');
+  for (const tz of TIMEZONES) {
+    const o = document.createElement('option');
+    o.value = tz.id; o.textContent = tz.label;
+    if (tz.id === timezone) o.selected = true;
+    tzSel.append(o);
+  }
+  tzSel.addEventListener('change', () => { timezone = tzSel.value; savePrefs(); renderRightContent(); });
+  tzField.append(tzSel);
+  r2.append(tzField);
+  sec.append(r2);
+
   return sec;
 }
 
@@ -589,15 +891,25 @@ function buildSatSection() {
     const idEl = el('span', 'ip-sat-id');
     idEl.textContent = `#${sat.noradId}`;
 
-    const status = el('span', 'ip-sat-id');
-    status.textContent = sat.satrec ? '' : '...';
-    status.style.color = sat.satrec ? 'var(--ip-success)' : 'var(--ip-warning)';
+    // TLE freshness badge — surfaces stale data before the user wastes a
+    // 30-day worker run on a TLE that's months old.
+    const ageWrap = el('span', 'ip-sat-age');
+    if (sat.satrec) {
+      const age = describeTleAge(sat.satrec);
+      ageWrap.classList.add('tle-age-badge', age.level);
+      ageWrap.textContent = age.label;
+      ageWrap.title = `TLE epoch yaşı: ${age.label}. SGP4 doğruluğu zamanla düşer.`;
+    } else {
+      ageWrap.textContent = '...';
+      ageWrap.style.color = 'var(--ip-warning)';
+      ageWrap.style.fontSize = '10px';
+    }
 
     const rmBtn = el('button', 'ip-sat-remove');
     rmBtn.innerHTML = '&times;';
     rmBtn.addEventListener('click', (e) => { e.stopPropagation(); removeSatellite(sat.noradId); });
 
-    row.append(chk, chip, nameEl, idEl, status, rmBtn);
+    row.append(chk, chip, nameEl, idEl, ageWrap, rmBtn);
     sec.append(row);
   }
 
@@ -611,11 +923,19 @@ function buildSatSection() {
 }
 
 function buildRunButton() {
+  if (running) {
+    const btn = el('button', 'ip-btn ip-btn-full ip-btn-danger');
+    btn.style.marginTop = '4px';
+    btn.textContent = 'Analizi İptal Et (Esc)';
+    btn.addEventListener('click', () => cancelAnalysis());
+    return btn;
+  }
   const btn = el('button', 'ip-btn ip-btn-full');
   btn.style.marginTop = '4px';
-  btn.textContent = running ? 'Analiz ediliyor...' : 'Analiz Baslat';
-  btn.disabled = running || targetLat == null || satellites.filter(s => s.enabled && s.satrec).length === 0;
-  btn.addEventListener('click', () => runAnalysis());
+  btn.textContent = 'Analizi Yenile (R)';
+  btn.disabled = targetLat == null || satellites.filter(s => s.enabled && s.satrec && s.tle).length === 0;
+  btn.title = 'Önbelleği yok say ve yeniden çalıştır';
+  btn.addEventListener('click', () => runAnalysis(true));
   return btn;
 }
 
@@ -623,12 +943,31 @@ function buildRunButton() {
 
 function buildRightHeader() {
   const hdr = el('div', 'ip-right-header');
-  hdr.innerHTML = '<h2>Goruntuleme Firsatlari</h2>';
+  const title = el('h2');
+  title.textContent = 'Görüntüleme Fırsatları';
+  hdr.append(title);
+
+  const actions = el('div', 'ip-right-actions');
+
+  const helpBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
+  helpBtn.textContent = '?';
+  helpBtn.title = 'Klavye kısayolları';
+  helpBtn.addEventListener('click', () => openHelp());
+  actions.append(helpBtn);
+
+  const icsBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
+  icsBtn.textContent = 'ICS';
+  icsBtn.title = 'Takvim olarak indir (.ics) — kısayol: E';
+  icsBtn.addEventListener('click', () => exportIcs());
+  actions.append(icsBtn);
 
   const csvBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
   csvBtn.textContent = 'CSV';
+  csvBtn.title = 'CSV olarak indir — kısayol: C';
   csvBtn.addEventListener('click', () => exportCsv());
-  hdr.append(csvBtn);
+  actions.append(csvBtn);
+
+  hdr.append(actions);
   return hdr;
 }
 
@@ -638,44 +977,66 @@ function buildRightContent() {
   return wrap;
 }
 
+function applyFilters(opps) {
+  return opps.filter(o => o.sunElevation >= filterMinSun && Math.abs(o.offNadirDeg) <= maxRollDeg * (filterRollPct / 100));
+}
+
+function sortOpps(opps) {
+  const arr = opps.slice();
+  if (sortBy === 'time') arr.sort((a, b) => a.time - b.time);
+  else if (sortBy === 'roll') arr.sort((a, b) => Math.abs(a.offNadirDeg) - Math.abs(b.offNadirDeg));
+  else if (sortBy === 'sun') arr.sort((a, b) => b.sunElevation - a.sunElevation);
+  else if (sortBy === 'score') {
+    arr.forEach(o => { if (!o._score) o._score = computeOpportunityScore(o, { maxRollDeg }); });
+    arr.sort((a, b) => b._score.score - a._score.score);
+  }
+  return arr;
+}
+
 function renderRightContent() {
   const c = document.getElementById('ip-right-content');
   if (!c) return;
   c.innerHTML = '';
 
   if (targetLat == null) {
-    c.innerHTML = '<div class="ip-empty">Haritadan hedef secin, ardindan Analiz Baslat butonuna basin</div>';
+    c.innerHTML = '<div class="ip-empty">Haritadan hedef seçin veya konum arayın. Ayar değişiklikleri otomatik tetikler.</div>';
+    return;
+  }
+
+  // Progress + cancel — visible while a run is in flight, even if some
+  // satellites have already streamed partial results.
+  if (running) {
+    c.append(buildProgressUI());
+  }
+
+  if (!analysisResults && !running) {
+    c.innerHTML = '<div class="ip-empty">Uydu eklendiğinde analiz otomatik başlar. Esc: iptal.</div>';
     return;
   }
 
   if (running && !analysisResults) {
-    c.innerHTML = '<div class="ip-loading"><div class="ip-spinner"></div><span>Analiz ediliyor...</span></div>';
-    return;
+    return; // progress UI already shown
   }
 
-  if (!analysisResults) {
-    c.innerHTML = '<div class="ip-empty">Hedef secildi. Analiz icin "Analiz Baslat" butonuna basin.</div>';
-    return;
-  }
-
-  // Geometry diagram
+  // Geometry diagram (reactive to selected opp)
   const geomCard = el('div', 'ip-geom-card');
-  geomCard.innerHTML = '<div class="ip-geom-title">Goruntuleme Geometrisi</div>';
+  geomCard.innerHTML = '<div class="ip-geom-title">Görüntüleme Geometrisi</div>';
   geomCanvas = document.createElement('canvas');
   geomCanvas.width = 320; geomCanvas.height = 180;
   geomCard.append(geomCanvas);
   c.append(geomCard);
 
   // Summary
-  const total = analysisResults.reduce((s, r) => s + r.opportunities.length, 0);
-  const avail = analysisResults.filter(r => r.opportunities.length > 0).length;
+  const totalRaw = analysisResults.reduce((s, r) => s + r.opportunities.length, 0);
+  const filteredCount = analysisResults.reduce((s, r) => s + applyFilters(r.opportunities).length, 0);
+  const avail = analysisResults.filter(r => applyFilters(r.opportunities).length > 0).length;
   const summary = el('div', 'ip-section');
   summary.style.marginBottom = '10px';
-  summary.innerHTML = `<b>${total}</b> firsat bulundu &middot; <b>${avail}</b>/${analysisResults.length} uydu &middot; <b>${horizonDays}</b> gun &middot; roll &le; <b>${maxRollDeg}°</b>`;
+  const filterNote = filteredCount !== totalRaw ? ` (${totalRaw - filteredCount} filtrede gizlendi)` : '';
+  summary.innerHTML = `<b>${filteredCount}</b> fırsat${filterNote} · <b>${avail}</b>/${analysisResults.length} uydu · <b>${horizonDays}</b> gün · roll ≤ <b>${maxRollDeg}°</b>`;
   summary.style.fontSize = '12px'; summary.style.color = 'var(--ip-text-dim)';
   c.append(summary);
 
-  // Group by satellite
   for (const result of analysisResults) {
     const group = el('div', 'ip-opp-group');
 
@@ -684,17 +1045,29 @@ function renderRightContent() {
     chip.style.background = result.color || '#58a6ff';
     const nameEl = el('span', 'ip-opp-group-name');
     nameEl.textContent = result.name;
+    if (result.fromCache) {
+      const cachedTag = el('span', 'ip-opp-cached');
+      cachedTag.textContent = '(önbellek)';
+      cachedTag.title = 'Sonuçlar IndexedDB önbelleğinden geldi';
+      nameEl.append(' ', cachedTag);
+    }
     const countEl = el('span', 'ip-opp-group-count');
-    countEl.textContent = result.status === 'no_tle' ? 'TLE yok' : `${result.opportunities.length} firsat`;
+    const filtered = applyFilters(result.opportunities);
+    countEl.textContent = result.status === 'no_tle' ? 'TLE yok'
+      : filtered.length === result.opportunities.length
+        ? `${filtered.length} fırsat`
+        : `${filtered.length}/${result.opportunities.length} fırsat`;
     header.append(chip, nameEl, countEl);
     group.append(header);
 
-    if (result.opportunities.length === 0) {
+    if (filtered.length === 0) {
       const empty = el('div', 'ip-opp-noops');
-      empty.textContent = result.status === 'error' ? `Hata: ${result.error}` : 'Bu uydu icin uygun firsat bulunamadi';
+      if (result.status === 'error') empty.textContent = `Hata: ${result.error}`;
+      else if (result.opportunities.length > 0) empty.textContent = 'Aktif filtreyle uygun fırsat yok';
+      else empty.textContent = 'Bu uydu için fırsat bulunamadı';
       group.append(empty);
     } else {
-      for (const opp of result.opportunities) {
+      for (const opp of sortOpps(filtered)) {
         group.append(buildOppCard(opp, result));
       }
     }
@@ -702,37 +1075,76 @@ function renderRightContent() {
     c.append(group);
   }
 
-  // Draw first available opportunity on canvas
-  const firstOpp = analysisResults.find(r => r.opportunities.length > 0);
-  if (firstOpp && firstOpp.opportunities[0]) {
-    drawGeometryDiagram(firstOpp.opportunities[0]);
+  const firstOpp = analysisResults.flatMap(r => applyFilters(r.opportunities))[0];
+  if (firstOpp) drawGeometryDiagram(firstOpp);
+}
+
+function buildProgressUI() {
+  const wrap = el('div', 'ip-progress-wrap');
+  const overall = Array.from(analysisProgress.values());
+  const avg = overall.length ? overall.reduce((s, x) => s + x, 0) / overall.length : 0;
+  const head = el('div', 'ip-progress-head');
+  head.innerHTML = `<span>Analiz ediliyor… ${Math.round(avg * 100)}%</span>`;
+  const cancelBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
+  cancelBtn.textContent = 'İptal (Esc)';
+  cancelBtn.addEventListener('click', () => cancelAnalysis());
+  head.append(cancelBtn);
+  wrap.append(head);
+
+  const bar = el('div', 'peyker-progress');
+  const fill = el('div', 'peyker-progress-bar');
+  fill.style.width = `${(avg * 100).toFixed(1)}%`;
+  bar.append(fill);
+  wrap.append(bar);
+
+  // Per-sat mini lines so the user can see which satellite is lagging.
+  const list = el('div', 'ip-progress-list');
+  for (const [id, frac] of analysisProgress) {
+    const sat = satellites.find(s => s.noradId === id);
+    if (!sat) continue;
+    const row = el('div', 'ip-progress-row');
+    row.innerHTML = `<span class="ip-progress-name">${esc(sat.name)}</span>` +
+      `<span class="ip-progress-frac">${Math.round(frac * 100)}%</span>`;
+    list.append(row);
   }
+  wrap.append(list);
+  return wrap;
+}
+
+function fmtDate(d) {
+  const tz = timezone === 'browser' ? undefined : timezone;
+  return d.toLocaleString('tr-TR', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function fmtTime(d) {
+  const tz = timezone === 'browser' ? undefined : timezone;
+  return d.toLocaleString('tr-TR', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 function buildOppCard(opp, satResult) {
   const card = el('div', 'ip-opp-card');
   if (selectedOpp === opp) card.classList.add('active');
 
-  const timeStr = opp.time.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  const dateStr = opp.time.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (!opp._score) opp._score = computeOpportunityScore(opp, { maxRollDeg });
+  const stars = '★'.repeat(opp._score.stars) + '☆'.repeat(5 - opp._score.stars);
 
   const rollClass = Math.abs(opp.offNadirDeg) > maxRollDeg * 0.8 ? 'ip-opp-roll high' : 'ip-opp-roll';
 
   card.innerHTML = `
     <div class="ip-opp-top">
-      <span class="ip-opp-time">${timeStr}</span>
-      <span class="ip-opp-date">${dateStr}</span>
+      <span class="ip-opp-time">${fmtTime(opp.time)}</span>
+      <span class="ip-opp-stars" title="Kalite skoru ${opp._score.score.toFixed(0)}/100">${stars}</span>
+      <span class="ip-opp-date">${fmtDate(opp.time)}</span>
     </div>
     <div class="ip-opp-meta">
-      <span>Roll: <span class="${rollClass}">${opp.rollDeg > 0 ? '+' : ''}${opp.rollDeg.toFixed(2)}°</span></span>
+      <span title="Sensör roll açısı (işaret yönü)">Roll: <span class="${rollClass}">${opp.rollDeg > 0 ? '+' : ''}${opp.rollDeg.toFixed(2)}°</span></span>
+      <span title="Off-nadir: hedefin nadirden açısal sapması">ON: <strong>${opp.offNadirDeg.toFixed(2)}°</strong></span>
       <span>Alt: <strong>${opp.altKm.toFixed(0)} km</strong></span>
       <span>Mesafe: <strong>${opp.groundDistKm.toFixed(0)} km</strong></span>
-      <span class="ip-opp-sun">☀ ${opp.sunElevation.toFixed(1)}°</span>
+      <span class="ip-opp-sun" title="Güneş yükseklik açısı">☀ ${opp.sunElevation.toFixed(1)}°</span>
     </div>`;
 
   card.addEventListener('click', () => {
     showOppOnMap(opp, satResult);
-    // Update active state
     document.querySelectorAll('.ip-opp-card').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
   });
@@ -740,20 +1152,32 @@ function buildOppCard(opp, satResult) {
   return card;
 }
 
-/* ───── CSV Export ───── */
+/* ───── Exports ───── */
+
+function tzLabel() {
+  if (timezone === 'UTC') return 'UTC';
+  if (timezone === 'browser') return 'Local';
+  return 'TRT';
+}
 
 function exportCsv() {
-  if (!analysisResults) { toast('Once analiz calistirin', 'error'); return; }
-  const header = 'Satellite,NORAD ID,Date (UTC+3),Time (UTC+3),Roll (deg),Off-Nadir (deg),Altitude (km),Ground Dist (km),Sun Elev (deg),Sub-Sat Lat,Sub-Sat Lon,Target Lat,Target Lon';
+  if (!analysisResults) { toast('Önce analiz çalıştırın', 'error'); return; }
+  const tz = tzLabel();
+  const header = `Satellite,NORAD ID,Date (${tz}),Time (${tz}),Roll (deg),Off-Nadir (deg),Score,Altitude (km),Ground Dist (km),Sun Elev (deg),Sub-Sat Lat,Sub-Sat Lon,Target Lat,Target Lon`;
   const rows = [];
   for (const r of analysisResults) {
-    for (const o of r.opportunities) {
-      const d = o.time.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric' });
-      const t = o.time.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      rows.push([`"${r.name}"`, r.noradId, d, t, o.rollDeg.toFixed(2), o.offNadirDeg.toFixed(2), o.altKm.toFixed(0), o.groundDistKm.toFixed(0), o.sunElevation.toFixed(1), o.subSatLat.toFixed(4), o.subSatLon.toFixed(4), targetLat.toFixed(5), targetLon.toFixed(5)].join(','));
+    for (const o of applyFilters(r.opportunities)) {
+      if (!o._score) o._score = computeOpportunityScore(o, { maxRollDeg });
+      rows.push([
+        `"${r.name}"`, r.noradId, fmtDate(o.time), fmtTime(o.time),
+        o.rollDeg.toFixed(2), o.offNadirDeg.toFixed(2), o._score.score.toFixed(0),
+        o.altKm.toFixed(0), o.groundDistKm.toFixed(0), o.sunElevation.toFixed(1),
+        o.subSatLat.toFixed(4), o.subSatLon.toFixed(4),
+        targetLat.toFixed(5), targetLon.toFixed(5),
+      ].join(','));
     }
   }
-  if (rows.length === 0) { toast('Disa aktarilacak firsat yok', 'error'); return; }
+  if (rows.length === 0) { toast('Dışa aktarılacak fırsat yok', 'error'); return; }
   const csv = [header, ...rows].join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -763,6 +1187,40 @@ function exportCsv() {
   a.click();
   URL.revokeObjectURL(url);
   toast('CSV indirildi', 'success');
+}
+
+function exportIcs() {
+  if (!analysisResults) { toast('Önce analiz çalıştırın', 'error'); return; }
+  const events = [];
+  for (const r of analysisResults) {
+    for (const o of applyFilters(r.opportunities)) {
+      if (!o._score) o._score = computeOpportunityScore(o, { maxRollDeg });
+      const start = o.time;
+      const end = new Date(start.getTime() + 60_000); // 1 min nominal window
+      const rollSign = o.rollDeg > 0 ? '+' : '';
+      const desc = [
+        `Hedef: ${targetName || ''} (${targetLat.toFixed(4)}°, ${targetLon.toFixed(4)}°)`,
+        `Roll: ${rollSign}${o.rollDeg.toFixed(2)}° (off-nadir ${o.offNadirDeg.toFixed(2)}°)`,
+        `Pitch: ${pitchDeg.toFixed(1)}°`,
+        `Yükseklik: ${o.altKm.toFixed(0)} km, mesafe ${o.groundDistKm.toFixed(0)} km`,
+        `Güneş: ${o.sunElevation.toFixed(1)}°`,
+        `Sensör: ${getPreset(presetId).name}`,
+        `Skor: ${o._score.score.toFixed(0)}/100 (${o._score.stars}★)`,
+      ].join('\n');
+      events.push({
+        uid: `peyker-opp-${r.noradId}-${start.getTime()}@peyker`,
+        start, end,
+        summary: `📷 ${r.name} — ${targetName || 'hedef'}`,
+        description: desc,
+        location: `${targetLat.toFixed(5)}, ${targetLon.toFixed(5)}`,
+        alarmMinutes: 10,
+      });
+    }
+  }
+  if (events.length === 0) { toast('Dışa aktarılacak fırsat yok', 'error'); return; }
+  const ics = buildIcs(events, { calendarName: `Peyker — Görüntüleme (${targetName || 'hedef'})` });
+  downloadIcs(`imaging_opportunities_${targetLat.toFixed(2)}_${targetLon.toFixed(2)}.ics`, ics);
+  toast(`${events.length} fırsat ICS olarak indirildi`, 'success');
 }
 
 /* ───── Helpers ───── */

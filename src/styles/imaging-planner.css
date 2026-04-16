@@ -602,6 +602,102 @@ body {
 .ip-toast.error { border-color: var(--ip-danger); color: var(--ip-danger); }
 .ip-toast.success { border-color: var(--ip-success); color: var(--ip-success); }
 
+/* === New widgets (presets, scoring, progress, sensor frame) === */
+
+.ip-help {
+  display: inline-block;
+  width: 13px; height: 13px;
+  line-height: 13px; text-align: center;
+  background: var(--ip-bg);
+  border: 1px solid var(--ip-border);
+  color: var(--ip-text-dim);
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.ip-help:hover { color: var(--ip-accent); border-color: var(--ip-accent); }
+
+.ip-slider {
+  width: 100%;
+  accent-color: var(--ip-accent);
+}
+
+.ip-pitch-val {
+  background: var(--ip-bg);
+  border: 1px solid var(--ip-border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--ip-accent);
+}
+
+.ip-sat-age {
+  font-size: 10px;
+  margin-right: 4px;
+}
+
+.ip-right-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.ip-opp-stars {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--ip-sun);
+}
+
+.ip-opp-cached {
+  font-size: 9px;
+  color: var(--ip-text-dim);
+  font-weight: normal;
+  margin-left: 4px;
+}
+
+.ip-opp-card .ip-opp-meta strong { color: var(--ip-text); }
+
+/* Progress UI */
+.ip-progress-wrap {
+  background: rgba(88, 166, 255, 0.06);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.ip-progress-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--ip-accent);
+  margin-bottom: 8px;
+}
+
+.ip-progress-list {
+  margin-top: 8px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.ip-progress-row {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--ip-text-dim);
+  font-family: monospace;
+}
+.ip-progress-name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 220px;
+}
+.ip-progress-frac { color: var(--ip-text); }
+
+.ip-btn-danger {
+  background: var(--ip-danger);
+}
+.ip-btn-danger:hover {
+  background: var(--ip-danger);
+  opacity: 0.85;
+}
+
 /* === Responsive === */
 
 @media (max-width: 1200px) {

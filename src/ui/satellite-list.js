@@ -7,6 +7,7 @@ import { getState, setState, updateSatellite } from './state.js';
 import { removeSatFromMap, clearSatLayers } from '../map/layers.js';
 import { removeLiveMarker, centerOnSat, updateLiveMarker } from '../map/markers.js';
 import { propagateAt } from '../sat/propagate.js';
+import { describeTleAge } from '../sat/tle-meta.js';
 
 /**
  * Render the satellite list into the given container element.
@@ -53,6 +54,20 @@ export function renderSatList(container) {
     nameEl.addEventListener('click', () => {
       setState({ selectedSatId: sat.noradId });
     });
+
+    // TLE age badge
+    if (sat.satrec) {
+      try {
+        const age = describeTleAge(sat.satrec);
+        if (age) {
+          const badge = document.createElement('span');
+          badge.className = `tle-age-badge ${age.level}`;
+          badge.textContent = age.label;
+          badge.title = `TLE yaşı: ${age.ageDays.toFixed(1)} gün`;
+          nameEl.append(' ', badge);
+        }
+      } catch { /* skip */ }
+    }
 
     // Actions
     const actions = document.createElement('div');
