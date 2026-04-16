@@ -304,6 +304,166 @@ function checkPassTransitions() {
   cleanupNotifiedKeys();
 }
 
+/* ───── URL deep-linking ───── */
+
+/**
+ * Sync the browser URL with current sat + pass selection so pages can be
+ * bookmarked / shared. Format: ?sat=<norad>&idx=<pass-index>
+ * Uses history.replaceState to avoid polluting history on every navigation.
+ */
+function syncUrl() {
+  try {
+    const sat = satellites[selectedSatIdx];
+    if (!sat) return;
+    const p = new URLSearchParams(window.location.search);
+    p.set('sat', String(sat.noradId));
+    if (viewedIdx >= 0) p.set('idx', String(viewedIdx));
+    else p.delete('idx');
+    const newUrl = `${window.location.pathname}?${p.toString()}${window.location.hash}`;
+    history.replaceState(null, '', newUrl);
+  } catch {}
+}
+
+/**
+ * Read sat + pass index from the current URL and apply. Returns true
+ * if any URL-derived state was applied (so caller can skip default
+ * "next pass" selection).
+ */
+function applyUrlState() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const satParam = p.get('sat');
+    const idxParam = p.get('idx');
+    if (satParam) {
+      const noradId = parseInt(satParam, 10);
+      if (!Number.isNaN(noradId)) {
+        let i = satellites.findIndex(s => s.noradId === noradId);
+        if (i < 0) {
+          // Add the satellite implicitly so the deep link works
+          satellites.push({
+            noradId, name: `SAT-${noradId}`,
+            color: TRACK_COLORS[satellites.length % TRACK_COLORS.length], satrec: null,
+          });
+          i = satellites.length - 1;
+        }
+        selectedSatIdx = i;
+      }
+    }
+    if (idxParam) {
+      const n = parseInt(idxParam, 10);
+      if (!Number.isNaN(n) && n >= 0) viewedIdx = n;
+    }
+    return Boolean(satParam || idxParam);
+  } catch { return false; }
+}
+
+/* ───── Keyboard shortcuts ───── */
+
+function installKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Ignore when typing in form controls
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    switch (e.key) {
+      case 'ArrowLeft': {
+        if (passes.length === 0) return;
+        const now = Date.now();
+        const nextIdx = passes.findIndex(p => p.los.getTime() > now);
+        const cur = viewedIdx === -1 ? (nextIdx >= 0 ? nextIdx : 0) : viewedIdx;
+        if (cur > 0) { viewedIdx = cur - 1; renderAll(); syncUrl(); }
+        e.preventDefault();
+        break;
+      }
+      case 'ArrowRight': {
+        if (passes.length === 0) return;
+        const now = Date.now();
+        const nextIdx = passes.findIndex(p => p.los.getTime() > now);
+        const cur = viewedIdx === -1 ? (nextIdx >= 0 ? nextIdx : 0) : viewedIdx;
+        if (cur < passes.length - 1) { viewedIdx = cur + 1; renderAll(); syncUrl(); }
+        e.preventDefault();
+        break;
+      }
+      case ' ':  // Space → "Sıradaki" (next upcoming)
+        viewedIdx = -1; renderAll(); syncUrl();
+        e.preventDefault();
+        break;
+      case 'n': case 'N': {
+        // Next satellite
+        if (satellites.length <= 1) return;
+        selectedSatIdx = (selectedSatIdx + 1) % satellites.length;
+        const sel = document.getElementById('pt-sat-select');
+        if (sel) sel.value = selectedSatIdx;
+        passes = []; viewedIdx = -1; renderAll(); loadTLEAndCompute(); syncUrl();
+        break;
+      }
+      case 'p': case 'P': {
+        // Previous satellite
+        if (satellites.length <= 1) return;
+        selectedSatIdx = (selectedSatIdx - 1 + satellites.length) % satellites.length;
+        const sel = document.getElementById('pt-sat-select');
+        if (sel) sel.value = selectedSatIdx;
+        passes = []; viewedIdx = -1; renderAll(); loadTLEAndCompute(); syncUrl();
+        break;
+      }
+      case 's': case 'S': {
+        const b = document.getElementById('pt-sound-btn');
+        if (b) b.click();
+        break;
+      }
+      case 'e': case 'E':
+        if (passes.length) downloadIcs();
+        break;
+      case 'v': case 'V':
+        // Toggle chart view polar ↔ el-vs-time
+        chartView = chartView === 'polar' ? 'elvt' : 'polar';
+        try { localStorage.setItem(CHART_VIEW_KEY, chartView); } catch {}
+        renderAll();
+        break;
+      case 'f': case 'F':
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(() => {});
+        break;
+      case '?':
+      case 'h': case 'H':
+        toggleShortcutsHelp();
+        break;
+    }
+  });
+}
+
+function toggleShortcutsHelp() {
+  const existing = document.getElementById('pt-shortcuts-overlay');
+  if (existing) { existing.remove(); return; }
+  const overlay = el('div', 'pt-shortcuts-overlay');
+  overlay.id = 'pt-shortcuts-overlay';
+  overlay.innerHTML = `
+    <div class="pt-shortcuts-box">
+      <h3>Klavye Kısayolları</h3>
+      <ul>
+        <li><kbd>←</kbd> / <kbd>→</kbd> Önceki / sonraki geçiş</li>
+        <li><kbd>Space</kbd> Sıradaki geçiş</li>
+        <li><kbd>N</kbd> / <kbd>P</kbd> Sonraki / önceki uydu</li>
+        <li><kbd>S</kbd> Ses aç/kapa</li>
+        <li><kbd>V</kbd> Grafik görünümü (polar ↔ el-zaman)</li>
+        <li><kbd>E</kbd> Takvim (.ics) indir</li>
+        <li><kbd>F</kbd> Tam ekran</li>
+        <li><kbd>?</kbd> / <kbd>H</kbd> Bu yardım</li>
+        <li><kbd>Esc</kbd> Kapat</li>
+      </ul>
+      <button class="pt-back pt-shortcuts-close">Kapat</button>
+    </div>
+  `;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.classList.contains('pt-shortcuts-close')) overlay.remove();
+  });
+  document.addEventListener('keydown', function once(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', once); }
+  });
+  document.body.append(overlay);
+}
+
 /* ───── Bootstrap ───── */
 
 function init() {
@@ -329,7 +489,10 @@ function init() {
   }
 
   loadFromMainApp();
+  // Apply URL deep-link state after loading sat list (may select/inject a sat)
+  applyUrlState();
   buildUI();
+  installKeyboardShortcuts();
   if (satellites.length > 0) loadTLEAndCompute();
 
   // Restore wake lock if previously enabled
@@ -640,6 +803,14 @@ function buildUI() {
   });
   top.append(pill);
 
+  // Help / shortcuts
+  const helpBtn = el('button', 'pt-back');
+  helpBtn.style.cursor = 'pointer';
+  helpBtn.textContent = '?';
+  helpBtn.title = 'Klavye kısayolları (? tuşu)';
+  helpBtn.addEventListener('click', toggleShortcutsHelp);
+  top.append(helpBtn);
+
   // GS label
   const gsLabel = el('span', 'pt-gs-label');
   gsLabel.innerHTML = `GS: <strong>${esc(groundStation.name)}</strong> (${groundStation.lat.toFixed(2)}°, ${groundStation.lon.toFixed(2)}°)`;
@@ -664,6 +835,7 @@ function renderAll() {
   renderTimeline();
   renderHero();
   renderList();
+  syncUrl();
 }
 
 /**

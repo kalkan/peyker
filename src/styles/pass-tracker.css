@@ -599,6 +599,73 @@ body {
   font-style: italic;
 }
 
+/* === Keyboard shortcut overlay === */
+.pt-shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(3px);
+}
+
+.pt-shortcuts-box {
+  background: var(--pt-panel);
+  border: 1px solid var(--pt-border);
+  border-radius: 12px;
+  padding: 28px 36px;
+  min-width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+
+.pt-shortcuts-box h3 {
+  font-size: 20px;
+  margin-bottom: 18px;
+  color: var(--pt-text);
+}
+
+.pt-shortcuts-box ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+}
+
+.pt-shortcuts-box li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--pt-text);
+  font-size: 14px;
+  gap: 18px;
+}
+
+.pt-shortcuts-box li:last-child { border-bottom: none; }
+
+.pt-shortcuts-box kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--pt-bg);
+  border: 1px solid var(--pt-border);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--pt-accent);
+  min-width: 22px;
+  text-align: center;
+  margin: 0 2px;
+}
+
+.pt-shortcuts-close {
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  padding: 8px;
+}
+
 /* === Responsive === */
 
 @media (max-width: 900px) {
