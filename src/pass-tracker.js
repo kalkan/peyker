@@ -14,6 +14,7 @@ import './styles/pass-tracker.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, predictPasses, getLookAnglesCached as getLookAngles, propagateAt } from './sat/propagate.js';
 import { sunElevation } from './sat/sun.js';
+import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
 import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js';
 
 /* ───── State ───── */
@@ -57,6 +58,25 @@ let filter = { minEl: 0, visibleOnly: false, sortBy: 'time' };  // sortBy: 'time
 let chartView = 'polar';  // 'polar' | 'elvt'
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
+
+/**
+ * IDB cache key for computed passes. Includes TLE epoch so stale TLE
+ * invalidates automatically, plus GS identity and ANALYSIS_DAYS.
+ */
+function passCacheKey(sat, gs) {
+  const tleEpoch = sat.satrec ? `${sat.satrec.epochyr}.${sat.satrec.epochdays.toFixed(6)}` : '0';
+  return `passes:${sat.noradId}:${tleEpoch}:${gs.lat.toFixed(3)},${gs.lon.toFixed(3)}:${ANALYSIS_DAYS}`;
+}
+
+/** Serialize Date fields to ISO strings for JSON/IDB storage. */
+function serializePasses(pss) {
+  return pss.map(p => ({ ...p, aos: p.aos.toISOString(), los: p.los.toISOString(), tca: p.tca.toISOString() }));
+}
+
+/** Parse a cached pass list back into Date objects. */
+function deserializePasses(pss) {
+  return pss.map(p => ({ ...p, aos: new Date(p.aos), los: new Date(p.los), tca: new Date(p.tca) }));
+}
 
 /**
  * Compute a 0–100 quality score for a pass based on max elevation,
@@ -510,6 +530,9 @@ function init() {
   updateAllSatNextPass();
   setInterval(updateAllSatNextPass, 5 * 60 * 1000);
   setInterval(renderAllSatPill, 5000);
+
+  // One-shot IDB housekeeping — prune expired pass-cache entries
+  idbCleanupExpired();
 }
 
 function loadFromMainApp() {
@@ -556,7 +579,7 @@ async function loadTLEAndCompute() {
   computePasses();
 }
 
-function computePasses() {
+async function computePasses() {
   const sat = satellites[selectedSatIdx];
   if (!sat?.satrec || !groundStation) { passes = []; renderAll(); return; }
 
@@ -564,12 +587,24 @@ function computePasses() {
   const prevViewed = viewedIdx;
   const prevKey = (prevViewed >= 0 && prevPasses[prevViewed]) ? passKey(prevPasses[prevViewed]) : null;
 
-  passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
-  enrichPasses(sat.satrec, groundStation, passes);
+  // Try IDB cache first (expires after 6 h or when TLE epoch changes)
+  const cacheKey = passCacheKey(sat, groundStation);
+  const now = Date.now();
+  const cached = await idbGet(cacheKey);
+  if (cached && cached.expiresAt > now && Array.isArray(cached.passes)) {
+    passes = deserializePasses(cached.passes);
+  } else {
+    passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
+    enrichPasses(sat.satrec, groundStation, passes);
+    // Persist for ~6 h or until TLE changes
+    idbSet(cacheKey, {
+      expiresAt: now + 6 * 3600 * 1000,
+      passes: serializePasses(passes),
+    });
+  }
 
   // Suppress chimes for transitions that happened before we had the pass list
   // (prevents spurious chime on page load during a running pass)
-  const now = Date.now();
   for (const p of passes) {
     const k = passKey(p);
     const losMs = p.los.getTime();
