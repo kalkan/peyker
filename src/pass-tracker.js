@@ -15,6 +15,7 @@ import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, predictPasses, getLookAnglesCached as getLookAngles, propagateAt } from './sat/propagate.js';
 import { sunElevation } from './sat/sun.js';
 import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
+import { predictPassesInWorker } from './sat/sgp4-worker-client.js';
 import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js';
 
 /* ───── State ───── */
@@ -570,6 +571,8 @@ async function loadTLEAndCompute() {
     try {
       const tle = await fetchTLE(sat.noradId);
       sat.satrec = parseTLE(tle.line1, tle.line2);
+      sat.tleLine1 = tle.line1;
+      sat.tleLine2 = tle.line2;
       sat.name = tle.name;
     } catch (err) {
       console.error('TLE fetch failed:', err);
@@ -594,7 +597,17 @@ async function computePasses() {
   if (cached && cached.expiresAt > now && Array.isArray(cached.passes)) {
     passes = deserializePasses(cached.passes);
   } else {
-    passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
+    // Prefer worker-based SGP4 so the UI never freezes on long sweeps.
+    // If TLE lines weren't stored (older state), fall back to sync path.
+    if (sat.tleLine1 && sat.tleLine2) {
+      try {
+        passes = await predictPassesInWorker(sat.tleLine1, sat.tleLine2, groundStation, ANALYSIS_DAYS);
+      } catch {
+        passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
+      }
+    } else {
+      passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
+    }
     enrichPasses(sat.satrec, groundStation, passes);
     // Persist for ~6 h or until TLE changes
     idbSet(cacheKey, {
