@@ -1088,7 +1088,7 @@ function renderHero() {
     <div class="pt-detail"><div class="pt-detail-value ${pass.maxEl >= 30 ? 'green' : 'accent'}">${pass.maxEl.toFixed(1)}°</div><div class="pt-detail-label">Max Elevasyon</div></div>
     <div class="pt-detail"><div class="pt-detail-value">${durM}m ${durS}s</div><div class="pt-detail-label">Sure</div></div>
     <div class="pt-detail"><div class="pt-detail-value gold">${azToCompass(pass.azAos)}→${azToCompass(pass.azLos)}</div><div class="pt-detail-label">Yon ${heroVis}</div></div>
-    <div class="pt-detail" style="grid-column:1/-1;"><div class="pt-detail-value" style="font-size:32px;color:var(--pt-gold);letter-spacing:4px;">${heroStars}</div><div class="pt-detail-label">Kalite (${pass.score?.toFixed(0) ?? 0}/100)</div></div>
+    <div class="pt-detail" style="grid-column:1/-1;"><div class="pt-detail-value" style="font-size:29px;color:var(--pt-gold);letter-spacing:4px;">${heroStars}</div><div class="pt-detail-label">Kalite (${pass.score?.toFixed(0) ?? 0}/100)</div></div>
   `;
   hero.append(details);
 

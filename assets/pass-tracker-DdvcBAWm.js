@@ -27,7 +27,7 @@ Max ${r.p.maxEl.toFixed(1)}°${r.p.visible?" 👁":""}`,d.addEventListener("clic
     <div class="pt-detail"><div class="pt-detail-value ${o.maxEl>=30?"green":"accent"}">${o.maxEl.toFixed(1)}°</div><div class="pt-detail-label">Max Elevasyon</div></div>
     <div class="pt-detail"><div class="pt-detail-value">${C}m ${g}s</div><div class="pt-detail-label">Sure</div></div>
     <div class="pt-detail"><div class="pt-detail-value gold">${F(o.azAos)}→${F(o.azLos)}</div><div class="pt-detail-label">Yon ${L}</div></div>
-    <div class="pt-detail" style="grid-column:1/-1;"><div class="pt-detail-value" style="font-size:32px;color:var(--pt-gold);letter-spacing:4px;">${E}</div><div class="pt-detail-label">Kalite (${((b=o.score)==null?void 0:b.toFixed(0))??0}/100)</div></div>
+    <div class="pt-detail" style="grid-column:1/-1;"><div class="pt-detail-value" style="font-size:29px;color:var(--pt-gold);letter-spacing:4px;">${E}</div><div class="pt-detail-label">Kalite (${((b=o.score)==null?void 0:b.toFixed(0))??0}/100)</div></div>
   `,t.append(d);const S=p("div","pt-times-row");S.innerHTML=`
     <div class="pt-time-block"><div class="pt-time-label">AOS</div><div class="pt-time-value">${V(o.aos)}</div><div class="pt-time-az">${vt(o.azAos)}</div></div>
     <div class="pt-time-block"><div class="pt-time-label">TCA</div><div class="pt-time-value">${V(o.tca)}</div><div class="pt-time-az">${vt(o.azTca)}</div></div>
