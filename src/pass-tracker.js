@@ -280,6 +280,11 @@ function init() {
 
   // Check AOS/LOS transitions every second (runs always, even if hero not showing pass)
   setInterval(checkPassTransitions, 1000);
+
+  // All-satellite next-pass widget: full recompute every 5 min, countdown every 5 s
+  updateAllSatNextPass();
+  setInterval(updateAllSatNextPass, 5 * 60 * 1000);
+  setInterval(renderAllSatPill, 5000);
 }
 
 function loadFromMainApp() {
@@ -543,6 +548,35 @@ function buildUI() {
   });
   top.append(wakeBtn);
 
+  // Calendar export (.ics)
+  const icsBtn = el('button', 'pt-back');
+  icsBtn.style.cursor = 'pointer';
+  icsBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Takvim';
+  icsBtn.title = 'Gecisleri .ics dosyasi olarak indir (Google/Outlook/Apple Calendar)';
+  icsBtn.addEventListener('click', () => {
+    if (!passes.length) { icsBtn.title = 'Onceliği geçiş bekle'; return; }
+    downloadIcs();
+  });
+  top.append(icsBtn);
+
+  // Next-pass-across-all-sats pill
+  const pill = el('div', 'pt-all-sat-pill');
+  pill.id = 'pt-all-sat-pill';
+  pill.style.display = 'none';
+  pill.title = 'Tüm uydular arasında en yakın gecis';
+  pill.addEventListener('click', () => {
+    if (!allSatNextPass) return;
+    if (allSatNextPass.satIdx !== selectedSatIdx) {
+      sel.value = allSatNextPass.satIdx;
+      selectedSatIdx = allSatNextPass.satIdx;
+      passes = [];
+      viewedIdx = -1;
+      renderAll();
+      loadTLEAndCompute();
+    }
+  });
+  top.append(pill);
+
   // GS label
   const gsLabel = el('span', 'pt-gs-label');
   gsLabel.innerHTML = `GS: <strong>${esc(groundStation.name)}</strong> (${groundStation.lat.toFixed(2)}°, ${groundStation.lon.toFixed(2)}°)`;
@@ -621,11 +655,24 @@ function renderHero() {
       }
       const cdEl = document.getElementById('pt-cd-value');
       if (cdEl) cdEl.textContent = fmtCountdown(rem);
+      if (isActive) updateLiveReadout(pass);
     }, 1000);
   }
 
-  // Arc SVG
-  hero.append(buildArc(pass, isActive));
+  // Polar sky chart
+  hero.append(buildPolarChart(pass, isActive));
+
+  // Live AZ / EL / range readout (shown for active pass)
+  if (isActive) {
+    const live = el('div', 'pt-live-readout');
+    live.innerHTML = `
+      <div class="pt-live-block"><div class="pt-live-label">AZIMUT</div><div class="pt-live-value" id="pt-live-az">—</div></div>
+      <div class="pt-live-block"><div class="pt-live-label">ELEVASYON</div><div class="pt-live-value green" id="pt-live-el">—</div></div>
+      <div class="pt-live-block"><div class="pt-live-label">MESAFE</div><div class="pt-live-value" id="pt-live-range">—</div></div>
+    `;
+    hero.append(live);
+    updateLiveReadout(pass);
+  }
 
   // Details row: max el, duration, range
   const details = el('div', 'pt-pass-details');
@@ -678,41 +725,123 @@ function renderHero() {
   hero.append(nav);
 }
 
-function buildArc(pass, isActive) {
-  // viewBox 408x144 matches CSS .pt-arc-svg size (no fractional scaling)
+/**
+ * Project (azimuth°, elevation°) to polar-chart Cartesian coords.
+ * Zenith at center (cx, cy), horizon at radius `maxR`.
+ * North up, East right — azimuth measured clockwise from North.
+ */
+function polarProject(azDeg, elDeg, cx, cy, maxR) {
+  const DEG = Math.PI / 180;
+  const r = Math.max(0, (90 - elDeg) / 90) * maxR;
+  return [cx + r * Math.sin(azDeg * DEG), cy - r * Math.cos(azDeg * DEG)];
+}
+
+function buildPolarChart(pass, isActive) {
+  // 400×400 viewBox (square polar chart)
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'pt-arc-svg');
-  svg.setAttribute('viewBox', '0 0 408 144');
+  svg.setAttribute('viewBox', '0 0 400 400');
 
-  // Vertical positions
-  const baseY = 122;
-  const arcTopY = Math.max(12, baseY - pass.maxEl * 1.2);
+  const cx = 200, cy = 200, R = 175;
   const color = isActive ? '#3fb950' : '#58a6ff';
+
+  // Sample trajectory (AOS → LOS) for path
+  const sat = satellites[selectedSatIdx];
+  const samples = [];
+  if (sat?.satrec && groundStation) {
+    const N = 48;
+    const aosT = pass.aos.getTime();
+    const losT = pass.los.getTime();
+    for (let i = 0; i <= N; i++) {
+      const t = aosT + ((losT - aosT) * i) / N;
+      const look = getLookAngles(sat.satrec, new Date(t), groundStation);
+      if (look && look.elevation >= 0) samples.push(look);
+    }
+  }
+
+  // Build trajectory path
+  let pathD = '';
+  for (let i = 0; i < samples.length; i++) {
+    const [x, y] = polarProject(samples[i].azimuth, samples[i].elevation, cx, cy, R);
+    pathD += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }
+
+  // Key points
+  const [aosX, aosY] = pass.azAos != null ? polarProject(pass.azAos, 0, cx, cy, R) : [cx, cy];
+  const [losX, losY] = pass.azLos != null ? polarProject(pass.azLos, 0, cx, cy, R) : [cx, cy];
+  const [tcaX, tcaY] = pass.azTca != null ? polarProject(pass.azTca, pass.maxEl, cx, cy, R) : [cx, cy];
+
+  // Elevation ring positions (30°, 60°)
+  const r30 = ((90 - 30) / 90) * R;
+  const r60 = ((90 - 60) / 90) * R;
 
   svg.innerHTML = `
     <defs>
-      <linearGradient id="ag" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="${color}" stop-opacity="0.1"/>
-        <stop offset="50%" stop-color="${color}" stop-opacity="0.35"/>
-        <stop offset="100%" stop-color="${color}" stop-opacity="0.1"/>
-      </linearGradient>
+      <radialGradient id="pt-sky" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#0d1117" stop-opacity="0.0"/>
+        <stop offset="100%" stop-color="#161b22" stop-opacity="0.6"/>
+      </radialGradient>
     </defs>
-    <line x1="0" y1="${baseY}" x2="408" y2="${baseY}" stroke="#30363d" stroke-width="1"/>
-    <path d="M20 ${baseY} Q204 ${arcTopY} 388 ${baseY}" fill="none" stroke="url(#ag)" stroke-width="3" ${isActive ? '' : 'stroke-dasharray="7 5"'}/>
-    <circle cx="20" cy="${baseY}" r="4" fill="#5c6980"/>
-    <circle cx="388" cy="${baseY}" r="4" fill="#5c6980"/>
-    <circle cx="204" cy="${arcTopY}" r="7" fill="${color}" opacity="0.9">${isActive ? '<animate attributeName="opacity" values="0.9;0.3;0.9" dur="2s" repeatCount="indefinite"/>' : ''}</circle>
-    <text x="20" y="140" font-size="13" fill="#5c6980" font-family="sans-serif" text-anchor="middle">AOS</text>
-    <text x="204" y="${arcTopY - 14}" font-size="15" fill="${color}" font-family="monospace" font-weight="700" text-anchor="middle">${pass.maxEl.toFixed(1)}°</text>
-    <text x="388" y="140" font-size="13" fill="#5c6980" font-family="sans-serif" text-anchor="middle">LOS</text>
-    <g transform="translate(196,${baseY})">
-      <line x1="8" y1="0" x2="8" y2="-13" stroke="#5c6980" stroke-width="1.4"/>
-      <circle cx="8" cy="-13" r="4.5" fill="none" stroke="#5c6980" stroke-width="1.2"/>
-      <line x1="1" y1="-8" x2="-4" y2="-3" stroke="#5c6980" stroke-width="1"/>
-      <line x1="15" y1="-8" x2="20" y2="-3" stroke="#5c6980" stroke-width="1"/>
-    </g>
+    <!-- Sky dome -->
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="url(#pt-sky)" stroke="#30363d" stroke-width="1.5"/>
+    <!-- Elevation rings -->
+    <circle cx="${cx}" cy="${cy}" r="${r30}" fill="none" stroke="#30363d" stroke-width="1" stroke-dasharray="3 4"/>
+    <circle cx="${cx}" cy="${cy}" r="${r60}" fill="none" stroke="#30363d" stroke-width="1" stroke-dasharray="3 4"/>
+    <!-- Cross lines N-S / E-W -->
+    <line x1="${cx}" y1="${cy - R}" x2="${cx}" y2="${cy + R}" stroke="#30363d" stroke-width="1"/>
+    <line x1="${cx - R}" y1="${cy}" x2="${cx + R}" y2="${cy}" stroke="#30363d" stroke-width="1"/>
+    <!-- Compass labels -->
+    <text x="${cx}" y="${cy - R - 8}" font-size="18" font-weight="700" fill="#8b949e" font-family="sans-serif" text-anchor="middle">K</text>
+    <text x="${cx + R + 12}" y="${cy + 6}" font-size="18" font-weight="700" fill="#8b949e" font-family="sans-serif" text-anchor="middle">D</text>
+    <text x="${cx}" y="${cy + R + 20}" font-size="18" font-weight="700" fill="#8b949e" font-family="sans-serif" text-anchor="middle">G</text>
+    <text x="${cx - R - 12}" y="${cy + 6}" font-size="18" font-weight="700" fill="#8b949e" font-family="sans-serif" text-anchor="middle">B</text>
+    <!-- Elevation ring labels -->
+    <text x="${cx + 4}" y="${cy - r60 - 3}" font-size="11" fill="#5c6980" font-family="monospace">60°</text>
+    <text x="${cx + 4}" y="${cy - r30 - 3}" font-size="11" fill="#5c6980" font-family="monospace">30°</text>
+    <!-- Trajectory path -->
+    ${pathD ? `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" ${isActive ? '' : 'stroke-dasharray="6 4"'}/>` : ''}
+    <!-- AOS marker -->
+    <circle cx="${aosX}" cy="${aosY}" r="6" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+    <text x="${aosX}" y="${aosY - 12}" font-size="12" font-weight="700" fill="#58a6ff" font-family="sans-serif" text-anchor="middle">AOS</text>
+    <!-- LOS marker -->
+    <circle cx="${losX}" cy="${losY}" r="6" fill="#f85149" stroke="#0d1117" stroke-width="2"/>
+    <text x="${losX}" y="${losY - 12}" font-size="12" font-weight="700" fill="#f85149" font-family="sans-serif" text-anchor="middle">LOS</text>
+    <!-- TCA marker -->
+    <circle cx="${tcaX}" cy="${tcaY}" r="7" fill="#ffd700" stroke="#0d1117" stroke-width="2"/>
+    <text x="${tcaX}" y="${tcaY - 14}" font-size="13" font-weight="700" fill="#ffd700" font-family="monospace" text-anchor="middle">${pass.maxEl.toFixed(1)}°</text>
+    <!-- Live dot (will be updated for active pass) -->
+    <circle id="pt-live-dot" cx="${cx}" cy="${cy}" r="8" fill="${color}" opacity="0" stroke="#0d1117" stroke-width="2">
+      ${isActive ? '<animate attributeName="r" values="8;12;8" dur="1.5s" repeatCount="indefinite"/>' : ''}
+    </circle>
   `;
   return svg;
+}
+
+/**
+ * Update the live AZ/EL/range readout and the moving dot on the polar chart.
+ * Called once per second during an active pass.
+ */
+function updateLiveReadout(pass) {
+  const sat = satellites[selectedSatIdx];
+  if (!sat?.satrec || !groundStation) return;
+  const look = getLookAngles(sat.satrec, new Date(), groundStation);
+  if (!look) return;
+
+  const azEl = document.getElementById('pt-live-az');
+  const elEl = document.getElementById('pt-live-el');
+  const rgEl = document.getElementById('pt-live-range');
+  if (azEl) azEl.textContent = `${look.azimuth.toFixed(1)}° ${azToCompass(look.azimuth)}`;
+  if (elEl) elEl.textContent = `${look.elevation.toFixed(1)}°`;
+  if (rgEl) rgEl.textContent = `${look.rangeSat.toFixed(0)} km`;
+
+  // Move the live dot on the polar chart
+  const dot = document.getElementById('pt-live-dot');
+  if (dot && look.elevation >= 0) {
+    const [x, y] = polarProject(look.azimuth, look.elevation, 200, 200, 175);
+    dot.setAttribute('cx', x.toFixed(1));
+    dot.setAttribute('cy', y.toFixed(1));
+    dot.setAttribute('opacity', '1');
+  }
 }
 
 /* ───── Pass list ───── */
@@ -790,6 +919,126 @@ function renderList() {
     const isVisible = rRect.top >= sRect.top && rRect.bottom <= sRect.bottom;
     if (!isVisible) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
+}
+
+/* ───── .ics calendar export ───── */
+
+function icsEscape(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function icsDate(d) {
+  // Format as UTC basic form: YYYYMMDDTHHMMSSZ (RFC5545)
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+function buildIcs(satName, gsName, pss) {
+  const now = new Date();
+  const dtstamp = icsDate(now);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Peyker//Pass Tracker//TR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${icsEscape(satName)} gecisleri`,
+  ];
+  for (const p of pss) {
+    if (p.los.getTime() < now.getTime()) continue;  // skip past passes
+    const uid = `pass-${p.aos.getTime()}-${p.los.getTime()}@peyker`;
+    const dur = Math.floor((p.los - p.aos) / 60000);
+    const desc = `Max el: ${p.maxEl.toFixed(1)}°\\nSüre: ${dur} dk\\nAOS az: ${p.azAos != null ? p.azAos.toFixed(0) + '° (' + azToCompass(p.azAos) + ')' : '?'}\\nLOS az: ${p.azLos != null ? p.azLos.toFixed(0) + '° (' + azToCompass(p.azLos) + ')' : '?'}\\nGS: ${gsName}`;
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART:${icsDate(p.aos)}`,
+      `DTEND:${icsDate(p.los)}`,
+      `SUMMARY:${icsEscape(satName)} ${p.maxEl.toFixed(0)}° (${azToCompass(p.azAos)}→${azToCompass(p.azLos)})`,
+      `DESCRIPTION:${desc}`,
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${icsEscape(satName)} gecis`,
+      'TRIGGER:-PT5M',
+      'END:VALARM',
+      'END:VEVENT',
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function downloadIcs() {
+  const sat = satellites[selectedSatIdx];
+  if (!sat || !passes.length) return;
+  const content = buildIcs(sat.name, groundStation?.name || 'GS', passes);
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sat.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_passes.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ───── Next-pass across all satellites ───── */
+
+async function updateAllSatNextPass() {
+  if (!groundStation || satellites.length === 0) { allSatNextPass = null; return; }
+
+  // Ensure TLEs are loaded for all satellites (lazy, best-effort)
+  for (const sat of satellites) {
+    if (!sat.satrec) {
+      try {
+        const tle = await fetchTLE(sat.noradId);
+        sat.satrec = parseTLE(tle.line1, tle.line2);
+        sat.name = tle.name;
+      } catch {
+        continue;  // skip this sat if TLE fetch fails
+      }
+    }
+  }
+
+  const now = Date.now();
+  let best = null;
+  for (let i = 0; i < satellites.length; i++) {
+    const s = satellites[i];
+    if (!s.satrec) continue;
+    // Short 3-day window for speed
+    const ps = predictPasses(s.satrec, groundStation, 3, 60);
+    for (const p of ps) {
+      if (p.los.getTime() < now) continue;
+      if (!best || p.aos.getTime() < best.aos.getTime()) {
+        best = { satIdx: i, satName: s.name, aos: p.aos, los: p.los, pass: p };
+      }
+      break;  // only the first future pass matters for this sat
+    }
+  }
+  allSatNextPass = best;
+  renderAllSatPill();
+}
+
+function renderAllSatPill() {
+  const pill = document.getElementById('pt-all-sat-pill');
+  if (!pill) return;
+  if (!allSatNextPass) {
+    pill.style.display = 'none';
+    return;
+  }
+  pill.style.display = '';
+  const p = allSatNextPass;
+  const isCurrent = p.satIdx === selectedSatIdx;
+  const remMs = p.aos.getTime() - Date.now();
+  const rem = remMs > 0 ? fmtCountdown(remMs) : 'AKTIF';
+  pill.innerHTML = `
+    <span class="pt-pill-label">Tüm uydularda sıradaki</span>
+    <strong>${esc(p.satName)}</strong>
+    <span class="pt-pill-cd">${rem}</span>
+    <span class="pt-pill-el">${p.pass.maxEl.toFixed(0)}°</span>
+  `;
+  pill.classList.toggle('current', isCurrent);
 }
 
 /* ───── Helpers ───── */

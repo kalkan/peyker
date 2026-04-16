@@ -81,6 +81,59 @@ body {
 .pt-sat-select:focus { border-color: var(--pt-accent); }
 .pt-sat-select option { background: var(--pt-bg); }
 
+.pt-all-sat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  background: rgba(88,166,255,0.08);
+  border: 1px solid rgba(88,166,255,0.3);
+  font-size: 12px;
+  color: var(--pt-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.pt-all-sat-pill:hover {
+  background: rgba(88,166,255,0.16);
+  border-color: var(--pt-accent);
+}
+
+.pt-all-sat-pill.current {
+  background: rgba(63,185,80,0.08);
+  border-color: rgba(63,185,80,0.4);
+}
+
+.pt-all-sat-pill .pt-pill-label {
+  color: var(--pt-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pt-all-sat-pill strong {
+  color: var(--pt-accent);
+  font-weight: 700;
+}
+
+.pt-all-sat-pill.current strong {
+  color: var(--pt-green);
+}
+
+.pt-all-sat-pill .pt-pill-cd {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.pt-all-sat-pill .pt-pill-el {
+  color: var(--pt-gold);
+  font-family: monospace;
+  font-weight: 700;
+}
+
 .pt-gs-label {
   font-size: 11px;
   color: var(--pt-dim);
@@ -165,10 +218,46 @@ body {
 }
 
 .pt-arc-svg {
-  width: 490px;
-  height: 173px;
-  margin-bottom: 36px;
+  width: 360px;
+  height: 360px;
+  margin-bottom: 24px;
 }
+
+/* Live readout (shown during active pass) */
+.pt-live-readout {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 28px;
+  padding: 18px 24px;
+  background: rgba(63,185,80,0.06);
+  border: 1px solid rgba(63,185,80,0.25);
+  border-radius: 12px;
+}
+
+.pt-live-block {
+  text-align: center;
+}
+
+.pt-live-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pt-dim);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+.pt-live-value {
+  font-size: 34px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #e6edf3;
+  letter-spacing: -0.5px;
+}
+
+.pt-live-value.green { color: var(--pt-green); }
 
 .pt-pass-details {
   display: grid;
@@ -355,4 +444,6 @@ body {
   .pt-pass-cell { font-size: 22px; }
   .pt-el-badge { font-size: 20px; }
   .pt-az-cell { font-size: 19px; }
+  .pt-arc-svg { width: 280px; height: 280px; }
+  .pt-live-value { font-size: 26px; }
 }
