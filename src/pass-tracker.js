@@ -55,29 +55,70 @@ function ensureAudioCtx() {
   return audioCtx;
 }
 
-function playTone(freqs, durMs = 180, gap = 120) {
+/**
+ * Play a sequence of beeps/pauses. Uses square wave for harsh, attention-grabbing
+ * alarm quality. Each step is either { f, d } (freq Hz, duration ms) or { pause }.
+ */
+function playAlarm(steps, waveType = 'square', vol = 0.38) {
   if (!soundEnabled) return;
   const ctx = ensureAudioCtx();
   if (!ctx) return;
   let t = ctx.currentTime;
-  for (const f of freqs) {
+  for (const step of steps) {
+    if (step.pause != null) { t += step.pause / 1000; continue; }
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = f;
+    osc.type = waveType;
+    osc.frequency.value = step.f;
+    // Tight attack/release for crisp alarm beeps
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.25, t + 0.02);
-    gain.gain.linearRampToValueAtTime(0.25, t + durMs / 1000 - 0.03);
-    gain.gain.linearRampToValueAtTime(0, t + durMs / 1000);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.005);
+    gain.gain.linearRampToValueAtTime(vol, t + step.d / 1000 - 0.012);
+    gain.gain.linearRampToValueAtTime(0, t + step.d / 1000);
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + durMs / 1000);
-    t += (durMs + gap) / 1000;
+    osc.stop(t + step.d / 1000 + 0.02);
+    t += step.d / 1000;
   }
 }
 
-function playAosChime() { playTone([880, 1175, 1568], 600, 1600); }    // rising 3-note, ~5s
-function playLosChime() { playTone([1175, 880, 659],  600, 1600); }    // falling 3-note, ~5s
+// AOS — urgent rising alarm: 3 staccato beeps + sustained high tone, repeated ×2
+// then final long sustain. Square-wave klaxon-style. ~5s total.
+function playAosChime() {
+  playAlarm([
+    { f: 1000, d: 180 }, { pause: 50 },
+    { f: 1200, d: 180 }, { pause: 50 },
+    { f: 1400, d: 180 }, { pause: 280 },
+    { f: 1600, d: 700 }, { pause: 380 },
+    { f: 1000, d: 180 }, { pause: 50 },
+    { f: 1200, d: 180 }, { pause: 50 },
+    { f: 1400, d: 180 }, { pause: 280 },
+    { f: 1600, d: 950 },
+  ]);
+}
+
+// LOS — descending alarm: 3 falling staccato beeps + sustained low tone, repeated ×2
+// then final long sustain. ~5s total.
+function playLosChime() {
+  playAlarm([
+    { f: 1600, d: 180 }, { pause: 50 },
+    { f: 1200, d: 180 }, { pause: 50 },
+    { f: 800,  d: 180 }, { pause: 280 },
+    { f: 600,  d: 700 }, { pause: 380 },
+    { f: 1600, d: 180 }, { pause: 50 },
+    { f: 1200, d: 180 }, { pause: 50 },
+    { f: 800,  d: 180 }, { pause: 280 },
+    { f: 600,  d: 950 },
+  ]);
+}
+
+// Short test beep when user turns sound on
+function playTestBeep() {
+  playAlarm([
+    { f: 1400, d: 120 }, { pause: 60 },
+    { f: 1600, d: 180 },
+  ]);
+}
 
 function checkPassTransitions() {
   if (!passes.length) return;
@@ -302,7 +343,7 @@ function buildUI() {
     if (soundEnabled) {
       // First click enables audio ctx + test chime
       ensureAudioCtx();
-      playTone([880], 120);
+      playTestBeep();
     }
     renderSoundBtn();
   });
