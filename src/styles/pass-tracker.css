@@ -168,7 +168,7 @@ body {
 }
 
 .pt-status-badge {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -202,7 +202,7 @@ body {
 }
 
 .pt-countdown {
-  font-size: 103px;
+  font-size: 93px;
   font-weight: 800;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Mono', monospace;
   color: #e6edf3;
@@ -212,7 +212,7 @@ body {
 }
 
 .pt-countdown-label {
-  font-size: 19px;
+  font-size: 17px;
   color: var(--pt-dim);
   margin-bottom: 38px;
 }
@@ -386,7 +386,7 @@ body {
 }
 
 .pt-live-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--pt-dim);
   letter-spacing: 1px;
@@ -394,7 +394,7 @@ body {
 }
 
 .pt-live-value {
-  font-size: 28px;
+  font-size: 25px;
   font-weight: 700;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #e6edf3;
@@ -416,7 +416,7 @@ body {
 }
 
 .pt-detail-value {
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
@@ -427,7 +427,7 @@ body {
 .pt-detail-value.gold { color: var(--pt-gold); }
 
 .pt-detail-label {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--pt-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -450,7 +450,7 @@ body {
 }
 
 .pt-time-label {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--pt-dim);
   font-weight: 600;
   letter-spacing: 1px;
@@ -458,14 +458,14 @@ body {
 }
 
 .pt-time-value {
-  font-size: 30px;
+  font-size: 27px;
   font-weight: 700;
   font-family: monospace;
   color: #e6edf3;
 }
 
 .pt-time-az {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--pt-dim);
   margin-top: 6px;
 }
@@ -678,13 +678,13 @@ body {
     border-bottom: 1px solid var(--pt-border);
     padding: 24px 16px;
   }
-  .pt-countdown { font-size: 60px; }
-  .pt-detail-value { font-size: 29px; }
-  .pt-time-value { font-size: 23px; }
+  .pt-countdown { font-size: 54px; }
+  .pt-detail-value { font-size: 26px; }
+  .pt-time-value { font-size: 21px; }
   .pt-pass-row { font-size: 22px; grid-template-columns: 108px 108px 84px 90px 1fr; }
   .pt-pass-cell { font-size: 22px; }
   .pt-el-badge { font-size: 20px; }
   .pt-az-cell { font-size: 19px; }
   .pt-arc-svg { width: 280px; height: 280px; }
-  .pt-live-value { font-size: 21px; }
+  .pt-live-value { font-size: 19px; }
 }
