@@ -34,6 +34,8 @@ const SOUND_KEY = 'pt-sound-enabled';
 const NOTIF_KEY = 'pt-notif-enabled';
 const TTS_KEY = 'pt-tts-enabled';
 const WAKE_KEY = 'pt-wake-enabled';
+const FILTER_KEY = 'pt-filter';  // JSON: { minEl, visibleOnly, sortBy }
+const CHART_VIEW_KEY = 'pt-chart-view';  // 'polar' | 'elvt'
 const CHIME_WINDOW_MS = 60_000;  // fire within 1 min of AOS/LOS (survives tab throttling)
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;  // drop notified keys older than 1 day
 const PRE_AOS_WARN_MS = [5 * 60_000, 60_000];  // 5 min and 1 min before AOS
@@ -49,6 +51,10 @@ let notifiedLosKeys = new Map();
 let warnedPreAosKeys = new Set();  // "${key}:${ms}" — pre-AOS warnings already fired
 let spokenKeys = new Set();        // same pattern for TTS events
 let allSatNextPass = null;         // { satIdx, aos, pass } — soonest pass across all sats
+
+// Filter + sort state for the pass list (default: no filter, chronological)
+let filter = { minEl: 0, visibleOnly: false, sortBy: 'time' };  // sortBy: 'time' | 'score'
+let chartView = 'polar';  // 'polar' | 'elvt'
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
 
@@ -310,6 +316,10 @@ function init() {
     if (t !== null) ttsEnabled = t === '1';
     const w = localStorage.getItem(WAKE_KEY);
     if (w !== null) wakeEnabled = w === '1';
+    const f = localStorage.getItem(FILTER_KEY);
+    if (f) Object.assign(filter, JSON.parse(f));
+    const cv = localStorage.getItem(CHART_VIEW_KEY);
+    if (cv === 'polar' || cv === 'elvt') chartView = cv;
   } catch {}
 
   // If notifications were previously enabled but permission is no longer granted, disable
@@ -637,6 +647,11 @@ function buildUI() {
 
   app.append(top);
 
+  // 24h Gantt timeline
+  const timeline = el('div', 'pt-timeline');
+  timeline.id = 'pt-timeline';
+  app.append(timeline);
+
   // Main content
   const main = el('div', 'pt-main');
   main.innerHTML = '<div class="pt-hero" id="pt-hero"></div><div class="pt-list-panel"><div class="pt-list-header" id="pt-list-header"></div><div class="pt-list-scroll" id="pt-list-scroll"></div></div>';
@@ -646,8 +661,104 @@ function buildUI() {
 }
 
 function renderAll() {
+  renderTimeline();
   renderHero();
   renderList();
+}
+
+/**
+ * 24-hour Gantt timeline: horizontal bar showing all passes in the next
+ * 24 h for *every* satellite. Block height ∝ max elevation. Tooltip +
+ * click to select.
+ */
+function renderTimeline() {
+  const tl = document.getElementById('pt-timeline');
+  if (!tl) return;
+  tl.innerHTML = '';
+
+  const now = Date.now();
+  const winMs = 24 * 3600 * 1000;
+  const end = now + winMs;
+
+  // Collect passes across ALL satellites for the next 24 h.
+  // For selected sat we reuse already-computed `passes`; others need a fresh
+  // shorter predict call.
+  const blocks = [];  // { satIdx, satName, color, p }
+  for (let i = 0; i < satellites.length; i++) {
+    const s = satellites[i];
+    if (!s.satrec || !groundStation) continue;
+    let ps;
+    if (i === selectedSatIdx) {
+      ps = passes.filter(p => p.los.getTime() >= now && p.aos.getTime() <= end);
+    } else {
+      // Short predict window — keep coarse to be fast
+      ps = predictPasses(s.satrec, groundStation, 1, 90)
+             .filter(p => p.los.getTime() >= now && p.aos.getTime() <= end);
+    }
+    for (const p of ps) blocks.push({ satIdx: i, satName: s.name, color: s.color, p });
+  }
+
+  // Build horizontal strip
+  const inner = el('div', 'pt-tl-inner');
+
+  // Hour ticks
+  const ticks = el('div', 'pt-tl-ticks');
+  for (let h = 0; h <= 24; h += 3) {
+    const frac = h / 24;
+    const at = new Date(now + h * 3600 * 1000);
+    const tick = el('span', 'pt-tl-tick');
+    tick.style.left = (frac * 100) + '%';
+    tick.textContent = h === 0 ? 'şimdi' : `+${h}h`;
+    if (h > 0) {
+      const hr = at.getHours().toString().padStart(2, '0');
+      tick.title = `${hr}:00`;
+    }
+    ticks.append(tick);
+  }
+  inner.append(ticks);
+
+  // Bar background
+  const bar = el('div', 'pt-tl-bar');
+
+  // Pass blocks
+  for (const b of blocks) {
+    const left = ((b.p.aos.getTime() - now) / winMs) * 100;
+    const width = Math.max(0.4, ((b.p.los.getTime() - b.p.aos.getTime()) / winMs) * 100);
+    const block = el('div', 'pt-tl-block');
+    if (b.satIdx === selectedSatIdx) block.classList.add('current-sat');
+    const isActive = b.p.aos.getTime() <= now && b.p.los.getTime() > now;
+    if (isActive) block.classList.add('active');
+    block.style.left = Math.max(0, left) + '%';
+    block.style.width = Math.min(100 - Math.max(0, left), width) + '%';
+    // Height/opacity proportional to max elevation (clamped)
+    const hFrac = Math.min(1, b.p.maxEl / 60);
+    block.style.height = (30 + hFrac * 60) + '%';
+    block.style.background = b.color;
+    block.style.borderColor = b.color;
+    block.title = `${b.satName}\nAOS ${fmtTime(b.p.aos)} → LOS ${fmtTime(b.p.los)}\nMax ${b.p.maxEl.toFixed(1)}°${b.p.visible ? ' 👁' : ''}`;
+    block.addEventListener('click', () => {
+      if (b.satIdx !== selectedSatIdx) {
+        const sel = document.getElementById('pt-sat-select');
+        if (sel) sel.value = b.satIdx;
+        selectedSatIdx = b.satIdx;
+        passes = [];
+        viewedIdx = -1;
+        loadTLEAndCompute();
+      } else {
+        const i = passes.findIndex(x => x.aos.getTime() === b.p.aos.getTime());
+        if (i >= 0) { viewedIdx = i; renderAll(); }
+      }
+    });
+    bar.append(block);
+  }
+
+  // "Now" indicator — at the left edge but still show a clear marker
+  const nowMarker = el('div', 'pt-tl-now');
+  nowMarker.style.left = '0%';
+  bar.append(nowMarker);
+
+  inner.append(bar);
+  tl.append(inner);
 }
 
 /* ───── Hero panel ───── */
@@ -712,8 +823,26 @@ function renderHero() {
     }, 1000);
   }
 
-  // Polar sky chart
-  hero.append(buildPolarChart(pass, isActive));
+  // Chart (polar sky dome or elevation-vs-time line)
+  const chartWrap = el('div', 'pt-chart-wrap');
+  const toggle = el('div', 'pt-chart-toggle');
+  toggle.innerHTML = `
+    <button data-v="polar" class="${chartView === 'polar' ? 'active' : ''}" title="Polar gökyüzü haritası">⊙ Polar</button>
+    <button data-v="elvt" class="${chartView === 'elvt' ? 'active' : ''}" title="Elevasyon vs zaman grafiği">📈 El-Zaman</button>
+  `;
+  toggle.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const v = b.getAttribute('data-v');
+    if (v && v !== chartView) {
+      chartView = v;
+      try { localStorage.setItem(CHART_VIEW_KEY, chartView); } catch {}
+      renderAll();
+    }
+  });
+  chartWrap.append(toggle);
+  chartWrap.append(chartView === 'elvt' ? buildElVsTimeChart(pass, isActive) : buildPolarChart(pass, isActive));
+  hero.append(chartWrap);
 
   // Live AZ / EL / range readout (shown for active pass)
   if (isActive) {
@@ -874,6 +1003,91 @@ function buildPolarChart(pass, isActive) {
 }
 
 /**
+ * Alternative chart view: elevation vs time line plot (familiar ham-radio
+ * style). Same outer dimensions as the polar chart for drop-in swap.
+ */
+function buildElVsTimeChart(pass, isActive) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'pt-arc-svg');
+  svg.setAttribute('viewBox', '0 0 400 400');
+
+  const padL = 48, padR = 24, padT = 24, padB = 46;
+  const plotW = 400 - padL - padR;
+  const plotH = 400 - padT - padB;
+  const color = isActive ? '#3fb950' : '#58a6ff';
+
+  // Sample trajectory
+  const sat = satellites[selectedSatIdx];
+  const samples = [];
+  if (sat?.satrec && groundStation) {
+    const N = 80;
+    const aosT = pass.aos.getTime();
+    const losT = pass.los.getTime();
+    for (let i = 0; i <= N; i++) {
+      const tms = aosT + ((losT - aosT) * i) / N;
+      const look = getLookAngles(sat.satrec, new Date(tms), groundStation);
+      if (look) samples.push({ t: tms, el: Math.max(0, look.elevation), az: look.azimuth });
+    }
+  }
+
+  const aosMs = pass.aos.getTime();
+  const losMs = pass.los.getTime();
+  const span = losMs - aosMs || 1;
+  const xOf = tms => padL + ((tms - aosMs) / span) * plotW;
+  const yOf = el => padT + plotH - (el / 90) * plotH;
+
+  // Build line path
+  let pathD = '';
+  for (let i = 0; i < samples.length; i++) {
+    const x = xOf(samples[i].t);
+    const y = yOf(samples[i].el);
+    pathD += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }
+  // Filled area under the curve (for visual weight)
+  const areaD = samples.length >= 2
+    ? pathD + ` L${xOf(samples[samples.length-1].t).toFixed(1)} ${(padT + plotH).toFixed(1)} L${xOf(samples[0].t).toFixed(1)} ${(padT + plotH).toFixed(1)} Z`
+    : '';
+
+  // Y-axis gridlines at 0/30/60/90
+  const yGrid = [0, 30, 60, 90].map(e => {
+    const y = yOf(e).toFixed(1);
+    return `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" stroke="#30363d" stroke-width="1" stroke-dasharray="3 4"/>
+            <text x="${padL - 6}" y="${y}" font-size="12" fill="#8b949e" font-family="monospace" text-anchor="end" dominant-baseline="middle">${e}°</text>`;
+  }).join('');
+
+  // Time ticks at AOS, TCA, LOS
+  const timeTick = (tms, label, col) => {
+    const x = xOf(tms).toFixed(1);
+    return `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>
+            <text x="${x}" y="${padT + plotH + 18}" font-size="12" fill="${col}" font-family="monospace" text-anchor="middle">${label}</text>
+            <text x="${x}" y="${padT + plotH + 33}" font-size="11" fill="#8b949e" font-family="monospace" text-anchor="middle">${fmtTime(new Date(tms))}</text>`;
+  };
+
+  svg.innerHTML = `
+    <!-- Plot background -->
+    <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+    ${yGrid}
+    <!-- Y axis label -->
+    <text x="14" y="${padT + plotH / 2}" font-size="13" font-weight="600" fill="#8b949e" font-family="sans-serif" text-anchor="middle" transform="rotate(-90 14 ${padT + plotH / 2})">Elevasyon</text>
+    <!-- Area + trajectory -->
+    ${areaD ? `<path d="${areaD}" fill="${color}" opacity="0.12"/>` : ''}
+    ${pathD ? `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" ${isActive ? '' : 'stroke-dasharray="6 4"'}/>` : ''}
+    <!-- Time ticks -->
+    ${timeTick(aosMs, 'AOS', '#58a6ff')}
+    ${timeTick(pass.tca.getTime(), 'TCA', '#ffd700')}
+    ${timeTick(losMs, 'LOS', '#f85149')}
+    <!-- TCA dot -->
+    <circle cx="${xOf(pass.tca.getTime()).toFixed(1)}" cy="${yOf(pass.maxEl).toFixed(1)}" r="6" fill="#ffd700" stroke="#0d1117" stroke-width="2"/>
+    <text x="${xOf(pass.tca.getTime()).toFixed(1)}" y="${(yOf(pass.maxEl) - 12).toFixed(1)}" font-size="13" font-weight="700" fill="#ffd700" font-family="monospace" text-anchor="middle">${pass.maxEl.toFixed(1)}°</text>
+    <!-- Live dot (active pass) -->
+    <circle id="pt-live-dot-elvt" cx="${padL}" cy="${padT + plotH}" r="7" fill="${color}" opacity="0" stroke="#0d1117" stroke-width="2">
+      ${isActive ? '<animate attributeName="r" values="7;11;7" dur="1.5s" repeatCount="indefinite"/>' : ''}
+    </circle>
+  `;
+  return svg;
+}
+
+/**
  * Update the live AZ/EL/range readout and the moving dot on the polar chart.
  * Called once per second during an active pass.
  */
@@ -898,9 +1112,89 @@ function updateLiveReadout(pass) {
     dot.setAttribute('cy', y.toFixed(1));
     dot.setAttribute('opacity', '1');
   }
+
+  // Move the live dot on the el-vs-time chart (same viewBox/padding as buildElVsTimeChart)
+  const dotE = document.getElementById('pt-live-dot-elvt');
+  if (dotE && look.elevation >= 0) {
+    const padL = 48, padR = 24, padT = 24, padB = 46;
+    const plotW = 400 - padL - padR;
+    const plotH = 400 - padT - padB;
+    const aosMs = pass.aos.getTime();
+    const span = pass.los.getTime() - aosMs || 1;
+    const frac = Math.max(0, Math.min(1, (Date.now() - aosMs) / span));
+    const x = padL + frac * plotW;
+    const y = padT + plotH - (Math.max(0, look.elevation) / 90) * plotH;
+    dotE.setAttribute('cx', x.toFixed(1));
+    dotE.setAttribute('cy', y.toFixed(1));
+    dotE.setAttribute('opacity', '1');
+  }
 }
 
 /* ───── Pass list ───── */
+
+function saveFilter() {
+  try { localStorage.setItem(FILTER_KEY, JSON.stringify(filter)); } catch {}
+}
+
+function renderListHeader(header, sat, filteredCount) {
+  header.innerHTML = '';
+  header.classList.add('pt-list-header-rich');
+
+  const title = el('div', 'pt-list-title');
+  const totalTxt = filteredCount === passes.length
+    ? `${passes.length} geçiş`
+    : `${filteredCount} / ${passes.length} geçiş`;
+  title.textContent = sat ? `${sat.name} — ${totalTxt} (${ANALYSIS_DAYS} gün)` : 'Uydu seciniz';
+  header.append(title);
+
+  const controls = el('div', 'pt-list-controls');
+
+  // Visible-only toggle
+  const visBtn = el('button', 'pt-chip' + (filter.visibleOnly ? ' active' : ''));
+  visBtn.innerHTML = '👁 Görünür';
+  visBtn.title = 'Yalnızca optik olarak izlenebilir geçişler';
+  visBtn.addEventListener('click', () => {
+    filter.visibleOnly = !filter.visibleOnly;
+    saveFilter();
+    renderAll();
+  });
+  controls.append(visBtn);
+
+  // Min elevation slider
+  const elWrap = el('label', 'pt-chip pt-chip-input');
+  elWrap.innerHTML = `Min <span class="pt-chip-val">${filter.minEl}°</span>`;
+  const elInput = el('input');
+  elInput.type = 'range';
+  elInput.min = '0';
+  elInput.max = '60';
+  elInput.step = '5';
+  elInput.value = String(filter.minEl);
+  elInput.addEventListener('input', () => {
+    filter.minEl = parseInt(elInput.value, 10);
+    elWrap.querySelector('.pt-chip-val').textContent = filter.minEl + '°';
+  });
+  elInput.addEventListener('change', () => { saveFilter(); renderAll(); });
+  elWrap.append(elInput);
+  controls.append(elWrap);
+
+  // Sort selector
+  const sortBtn = el('button', 'pt-chip');
+  const updateSortBtn = () => {
+    sortBtn.textContent = filter.sortBy === 'score' ? '↓ Kalite' : '↑ Zaman';
+    sortBtn.classList.toggle('active', filter.sortBy === 'score');
+  };
+  updateSortBtn();
+  sortBtn.title = 'Sıralama: Zaman ↔ Kalite';
+  sortBtn.addEventListener('click', () => {
+    filter.sortBy = filter.sortBy === 'time' ? 'score' : 'time';
+    saveFilter();
+    updateSortBtn();
+    renderAll();
+  });
+  controls.append(sortBtn);
+
+  header.append(controls);
+}
 
 function renderList() {
   const header = document.getElementById('pt-list-header');
@@ -908,11 +1202,21 @@ function renderList() {
   if (!header || !scroll) return;
 
   const sat = satellites[selectedSatIdx];
-  header.textContent = sat ? `${sat.name} — ${passes.length} gecis (${ANALYSIS_DAYS} gun)` : 'Uydu seciniz';
   scroll.innerHTML = '';
+
+  // Apply filter
+  const filtered = passes.filter(p =>
+    p.maxEl >= filter.minEl && (!filter.visibleOnly || p.visible));
+
+  // Header with filter controls
+  renderListHeader(header, sat, filtered.length);
 
   if (passes.length === 0) {
     scroll.innerHTML = '<div class="pt-empty">Gecis bulunamadi</div>';
+    return;
+  }
+  if (filtered.length === 0) {
+    scroll.innerHTML = '<div class="pt-empty">Filtre ile eşleşen geçiş yok</div>';
     return;
   }
 
@@ -920,12 +1224,21 @@ function renderList() {
   const nextIdx = passes.findIndex(p => p.los.getTime() > now);
   const currentView = viewedIdx === -1 ? (nextIdx >= 0 ? nextIdx : 0) : Math.min(viewedIdx, passes.length - 1);
 
-  // Group by day
+  // Sort
+  const sorted = filter.sortBy === 'score'
+    ? [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    : filtered;
+
+  // Group by day (only for chronological sort; score-sort is flat)
   const groups = new Map();
-  for (const p of passes) {
-    const key = fmtDate(p.aos);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(p);
+  if (filter.sortBy === 'time') {
+    for (const p of sorted) {
+      const key = fmtDate(p.aos);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+  } else {
+    groups.set('Kaliteye göre sıralı', sorted);
   }
 
   for (const [day, dayPasses] of groups) {
