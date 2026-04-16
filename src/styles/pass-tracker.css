@@ -415,6 +415,36 @@ body {
   color: var(--pt-dim);
   text-align: right;
   font-family: monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pt-stars {
+  color: var(--pt-gold);
+  font-family: serif;
+  font-size: 18px;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.pt-vis-icon {
+  font-size: 18px;
+  opacity: 0.85;
+}
+
+.pt-hero-vis {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  background: rgba(255,215,0,0.12);
+  color: var(--pt-gold);
+  border: 1px solid rgba(255,215,0,0.3);
+  vertical-align: middle;
 }
 
 .pt-empty {

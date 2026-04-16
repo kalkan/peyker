@@ -290,6 +290,39 @@ export function getLookAngles(satrec, date, gs) {
 }
 
 /**
+ * Cached wrapper around getLookAngles. Bounded LRU-ish cache keyed by
+ * (satrec identity + time bucket + gs identity). Cache entries are
+ * rounded to the nearest second so rapid re-calls (polar chart +
+ * live readout + transition check at the same moment) reuse one
+ * propagation. Size-limited to prevent unbounded growth.
+ */
+const LOOK_CACHE_MAX = 4096;
+const lookCache = new Map();  // key → { data, ts }
+let lookCacheSatTag = new WeakMap();
+let lookCacheGsTag = new WeakMap();
+let _tagCounter = 0;
+function _tagFor(obj, map) {
+  let t = map.get(obj);
+  if (t === undefined) { t = ++_tagCounter; map.set(obj, t); }
+  return t;
+}
+
+export function getLookAnglesCached(satrec, date, gs) {
+  const sec = Math.floor(date.getTime() / 1000);
+  const key = _tagFor(satrec, lookCacheSatTag) + ':' + _tagFor(gs, lookCacheGsTag) + ':' + sec;
+  const hit = lookCache.get(key);
+  if (hit) return hit.data;
+  const data = getLookAngles(satrec, date, gs);
+  // Evict oldest when over cap (Map keeps insertion order)
+  if (lookCache.size >= LOOK_CACHE_MAX) {
+    const firstKey = lookCache.keys().next().value;
+    if (firstKey !== undefined) lookCache.delete(firstKey);
+  }
+  lookCache.set(key, { data });
+  return data;
+}
+
+/**
  * Predict satellite passes over a ground station for a given number of days.
  *
  * A pass is detected when the satellite elevation rises above 0° as seen
@@ -302,21 +335,24 @@ export function getLookAngles(satrec, date, gs) {
  * @param {number} [stepSeconds=30] - coarse scan step
  * @returns {Array<{ aos: Date, los: Date, tca: Date, maxEl: number }>}
  */
-export function predictPasses(satrec, gs, days, stepSeconds = 30) {
+export function predictPasses(satrec, gs, days, stepSeconds = 60) {
   const passes = [];
   const start = Date.now();
   const end = start + days * 86400000;
-  const stepMs = stepSeconds * 1000;
+  const coarseStepMs = stepSeconds * 1000;
+  const fineStepMs = 10 * 1000;  // inside a pass: 10 s steps to locate TCA accurately
 
   let inPass = false;
   let passStart = null;
   let maxEl = 0;
   let maxElTime = null;
+  let stepMs = coarseStepMs;
+  let t = start;
 
-  for (let t = start; t <= end; t += stepMs) {
+  while (t <= end) {
     const date = new Date(t);
     const look = getLookAngles(satrec, date, gs);
-    if (!look) continue;
+    if (!look) { t += stepMs; continue; }
 
     if (look.elevation > 0) {
       if (!inPass) {
@@ -325,6 +361,7 @@ export function predictPasses(satrec, gs, days, stepSeconds = 30) {
         inPass = true;
         maxEl = look.elevation;
         maxElTime = date;
+        stepMs = fineStepMs;  // switch to fine-grained inside the pass
       }
       if (look.elevation > maxEl) {
         maxEl = look.elevation;
@@ -352,7 +389,9 @@ export function predictPasses(satrec, gs, days, stepSeconds = 30) {
       });
       inPass = false;
       maxEl = 0;
+      stepMs = coarseStepMs;  // back to coarse
     }
+    t += stepMs;
   }
 
   // Close any pass still in progress at end of window

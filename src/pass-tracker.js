@@ -12,7 +12,8 @@
 import './styles/pass-tracker.css';
 
 import { fetchTLE } from './sat/fetch.js';
-import { parseTLE, predictPasses, getLookAngles } from './sat/propagate.js';
+import { parseTLE, predictPasses, getLookAnglesCached as getLookAngles, propagateAt } from './sat/propagate.js';
+import { sunElevation } from './sat/sun.js';
 import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js';
 
 /* ───── State ───── */
@@ -50,6 +51,57 @@ let spokenKeys = new Set();        // same pattern for TTS events
 let allSatNextPass = null;         // { satIdx, aos, pass } — soonest pass across all sats
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
+
+/**
+ * Compute a 0–100 quality score for a pass based on max elevation,
+ * duration, and optical visibility. Returned as { score, stars } with
+ * stars ∈ [0, 5]. Pure function of an enriched pass object.
+ */
+function computePassScore(pass) {
+  const durMin = (pass.los - pass.aos) / 60000;
+  const elScore = Math.min(60, (pass.maxEl / 60) * 60);      // 0–60 pts
+  const durScore = Math.min(30, (durMin / 10) * 30);         // 0–30 pts (saturates at 10 min)
+  const visScore = pass.visible ? 10 : 0;                    // 0–10 pts
+  const score = elScore + durScore + visScore;
+  // Bucketed into stars (0..5) — 5★ requires ~80+
+  const stars = Math.min(5, Math.floor(score / 20 + 0.5));
+  return { score, stars };
+}
+
+/**
+ * Determine whether a pass is optically visible (naked-eye):
+ *   1. Observer at GS is in civil darkness (sun < -6°)
+ *   2. Satellite is sunlit (not in Earth's shadow)
+ *
+ * Evaluated at TCA — the moment of max elevation — as a single-point
+ * approximation which is sufficient for filtering LEO passes.
+ */
+function computePassVisibility(satrec, gs, pass) {
+  if (!satrec || !gs) return false;
+  // Observer darkness at TCA
+  const sunAtGs = sunElevation(pass.tca, gs.lat, gs.lon);
+  if (sunAtGs >= -6) return false;
+  // Satellite sunlit: sun elevation at subsatellite point > -horizonDrop
+  const sat = propagateAt(satrec, pass.tca);
+  if (!sat) return false;
+  const R = 6371;
+  const horizonDrop = Math.acos(R / (R + sat.alt)) * 180 / Math.PI;
+  const sunAtSat = sunElevation(pass.tca, sat.lat, sat.lon);
+  return sunAtSat > -horizonDrop;
+}
+
+/**
+ * Enrich passes with `visible`, `score`, and `stars` fields in-place.
+ */
+function enrichPasses(satrec, gs, passList) {
+  for (const p of passList) {
+    p.visible = computePassVisibility(satrec, gs, p);
+    const q = computePassScore(p);
+    p.score = q.score;
+    p.stars = q.stars;
+  }
+  return passList;
+}
 
 function cleanupNotifiedKeys() {
   const cutoff = Date.now() - KEY_TTL_MS;
@@ -340,6 +392,7 @@ function computePasses() {
   const prevKey = (prevViewed >= 0 && prevPasses[prevViewed]) ? passKey(prevPasses[prevViewed]) : null;
 
   passes = predictPasses(sat.satrec, groundStation, ANALYSIS_DAYS);
+  enrichPasses(sat.satrec, groundStation, passes);
 
   // Suppress chimes for transitions that happened before we had the pass list
   // (prevents spurious chime on page load during a running pass)
@@ -680,10 +733,13 @@ function renderHero() {
   const durM = Math.floor(durSec / 60);
   const durS = Math.floor(durSec % 60);
 
+  const heroStars = pass.stars != null ? '★'.repeat(pass.stars) + '☆'.repeat(5 - pass.stars) : '';
+  const heroVis = pass.visible ? '<span class="pt-hero-vis" title="Optik olarak izlenebilir">👁 Görünür</span>' : '';
   details.innerHTML = `
     <div class="pt-detail"><div class="pt-detail-value ${pass.maxEl >= 30 ? 'green' : 'accent'}">${pass.maxEl.toFixed(1)}°</div><div class="pt-detail-label">Max Elevasyon</div></div>
     <div class="pt-detail"><div class="pt-detail-value">${durM}m ${durS}s</div><div class="pt-detail-label">Sure</div></div>
-    <div class="pt-detail"><div class="pt-detail-value gold">${azToCompass(pass.azAos)}→${azToCompass(pass.azLos)}</div><div class="pt-detail-label">Yon</div></div>
+    <div class="pt-detail"><div class="pt-detail-value gold">${azToCompass(pass.azAos)}→${azToCompass(pass.azLos)}</div><div class="pt-detail-label">Yon ${heroVis}</div></div>
+    <div class="pt-detail" style="grid-column:1/-1;"><div class="pt-detail-value" style="font-size:32px;color:var(--pt-gold);letter-spacing:4px;">${heroStars}</div><div class="pt-detail-label">Kalite (${pass.score?.toFixed(0) ?? 0}/100)</div></div>
   `;
   hero.append(details);
 
@@ -893,12 +949,14 @@ function renderList() {
 
       const elCls = p.maxEl >= 60 ? 'pt-el-high' : p.maxEl >= 30 ? 'pt-el-mid' : p.maxEl >= 10 ? 'pt-el-low' : 'pt-el-vlow';
 
+      const stars = p.stars != null ? '★'.repeat(p.stars) + '☆'.repeat(5 - p.stars) : '';
+      const visIcon = p.visible ? '<span class="pt-vis-icon" title="Görsel olarak izlenebilir">👁</span>' : '';
       row.innerHTML = `
         <span class="pt-pass-cell">${fmtTime(p.aos)}</span>
         <span class="pt-pass-cell">${fmtTime(p.los)}</span>
         <span class="pt-pass-cell">${dm}m${ds > 0 ? ds + 's' : ''}</span>
         <span class="pt-el-badge ${elCls}">${p.maxEl.toFixed(1)}°</span>
-        <span class="pt-az-cell">${fmtAzShort(p.azAos)}→${fmtAzShort(p.azLos)}</span>
+        <span class="pt-az-cell">${fmtAzShort(p.azAos)}→${fmtAzShort(p.azLos)} ${visIcon}<span class="pt-stars">${stars}</span></span>
       `;
 
       row.addEventListener('click', () => {
