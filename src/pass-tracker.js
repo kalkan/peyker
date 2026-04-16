@@ -168,12 +168,33 @@ function showNotif(title, body) {
 
 /* ───── Text-to-speech ───── */
 
+// Cached Turkish voice — looked up lazily because voices load async on
+// some browsers (Chrome fires `voiceschanged` after the first call).
+let _trVoice = null;
+function pickTurkishVoice() {
+  if (_trVoice) return _trVoice;
+  if (!('speechSynthesis' in window)) return null;
+  const voices = speechSynthesis.getVoices() || [];
+  // Prefer an exact tr-TR match, then any voice whose lang starts with "tr".
+  _trVoice = voices.find(v => v.lang === 'tr-TR')
+          || voices.find(v => (v.lang || '').toLowerCase().startsWith('tr'))
+          || null;
+  return _trVoice;
+}
+
+if ('speechSynthesis' in window) {
+  // Re-resolve when the voice list is finally available (Chrome quirk).
+  speechSynthesis.addEventListener?.('voiceschanged', () => { _trVoice = null; pickTurkishVoice(); });
+}
+
 function speak(text, lang = 'tr-TR') {
   if (!ttsEnabled || !('speechSynthesis' in window)) return;
   try {
     speechSynthesis.cancel();  // drop any queued
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang;
+    const voice = pickTurkishVoice();
+    if (voice) u.voice = voice;
     u.rate = 1.0;
     u.pitch = 1.0;
     u.volume = 1.0;
