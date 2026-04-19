@@ -41,7 +41,6 @@ let progress = 0;
 
 // Cesium entities we manage
 let targetEntity = null;
-const orbitEntities = new Map(); // noradId -> Entity (polyline)
 const oppMarkerEntities = []; // Entity[]
 const selectionEntities = []; // all entities for selected-opp 3D viz
 
@@ -531,7 +530,6 @@ async function runAnalysis() {
   running = false;
   progress = 1;
 
-  drawOrbitTracks();
   drawOppMarkers();
   renderLeft();
   updateOppStrip();
@@ -551,37 +549,47 @@ function updateProgress() {
 }
 
 // ───────── Drawing ─────────
-function drawOrbitTracks() {
-  // Remove previous
-  for (const e of orbitEntities.values()) viewer.entities.remove(e);
-  orbitEntities.clear();
 
-  // For each sat, draw 24h track
-  const start = new Date();
-  const durationH = 24;
-  const stepS = 120;
+/** Draw just the selected opportunity's orbital pass (±25 min around opp time). */
+function drawSelectedPassArc(opp) {
+  const windowMin = 25;
+  const stepS = 20;
+  const points = [];
 
-  for (const sat of satellites) {
-    const points = [];
-    for (let t = 0; t <= durationH * 3600; t += stepS) {
-      const date = new Date(start.getTime() + t * 1000);
-      const pos = propagateAt(sat.satrec, date);
-      if (pos) points.push(pos.lon, pos.lat, pos.alt * 1000);
-    }
-    if (points.length < 6) continue;
-
-    const color = cesiumColor(sat.color, 0.7);
-    const entity = viewer.entities.add({
-      name: sat.name + ' yörüngesi',
-      polyline: {
-        positions: Cesium.Cartesian3.fromDegreesArrayHeights(points),
-        width: 2,
-        material: color,
-        clampToGround: false,
-      },
-    });
-    orbitEntities.set(sat.noradId, entity);
+  for (let dt = -windowMin * 60; dt <= windowMin * 60; dt += stepS) {
+    const date = new Date(opp.time.getTime() + dt * 1000);
+    const pos = propagateAt(opp.sat.satrec, date);
+    if (pos) points.push(pos.lon, pos.lat, pos.alt * 1000);
   }
+  if (points.length < 6) return;
+
+  const color = Cesium.Color.fromCssColorString(opp.sat.color);
+
+  // In-space arc (at altitude)
+  addSel({
+    name: opp.sat.name + ' geçiş',
+    polyline: {
+      positions: Cesium.Cartesian3.fromDegreesArrayHeights(points),
+      width: 3,
+      material: color.withAlpha(0.85),
+      clampToGround: false,
+    },
+  });
+
+  // Ground projection of the same arc
+  const groundPts = [];
+  for (let i = 0; i < points.length; i += 3) {
+    groundPts.push(points[i], points[i + 1]);
+  }
+  addSel({
+    name: opp.sat.name + ' yer izi',
+    polyline: {
+      positions: Cesium.Cartesian3.fromDegreesArray(groundPts),
+      width: 2,
+      material: color.withAlpha(0.5),
+      clampToGround: true,
+    },
+  });
 }
 
 function drawOppMarkers() {
@@ -607,8 +615,6 @@ function drawOppMarkers() {
 }
 
 function clearOppVisuals() {
-  for (const e of orbitEntities.values()) viewer.entities.remove(e);
-  orbitEntities.clear();
   for (const e of oppMarkerEntities) viewer.entities.remove(e);
   oppMarkerEntities.length = 0;
   clearSelectionEntities();
@@ -641,6 +647,9 @@ function renderOppOnGlobe(opp) {
 
   const satPos = propagateAt(opp.sat.satrec, opp.time);
   if (!satPos) return;
+
+  // ──── 0. Pass arc for the selected opportunity ────
+  drawSelectedPassArc(opp);
 
   const altM = satPos.alt * 1000;
   const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
