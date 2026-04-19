@@ -45,12 +45,9 @@ const sectionOpen = {
   stereo: false,
 };
 
-// Stereo planning state
-let stereoMinConvergence = 15;
-let stereoMaxConvergence = 40;
-let stereoMaxGapHours = 72;
-let stereoPairs = []; // { a, b, convergence, gapH, score }
-let selectedStereoIdx = -1;
+// Stereo planning state (same-pass stereo via forward/backward pitch)
+let stereoBH = 1.2;
+let stereoActive = false;
 
 // Cesium entities we manage
 let targetEntity = null;
@@ -274,100 +271,88 @@ function buildStereoSection() {
     info.style.textAlign = 'left';
     info.style.fontSize = '12px';
     info.style.padding = '0 0 8px 0';
-    info.textContent = 'Farklı açılardan aynı hedefi gören fırsat çiftlerini bul. İdeal yakınsama açısı 15-40°.';
+    info.textContent = 'Aynı geçişte öne/arkaya pitch vererek stereo çift elde edin. B/H oranını ayarlayın.';
     body.append(info);
 
-    // Min convergence
-    const minRow = el('div', 'ip3-slider-row');
-    minRow.innerHTML = `<label>Min Açı</label>`;
-    const minSlider = document.createElement('input');
-    minSlider.type = 'range';
-    minSlider.min = 5; minSlider.max = 60; minSlider.step = 1;
-    minSlider.value = stereoMinConvergence;
-    const minVal = el('span', 'ip3-slider-val');
-    minVal.textContent = `${stereoMinConvergence}°`;
-    minSlider.addEventListener('input', () => {
-      stereoMinConvergence = parseInt(minSlider.value, 10);
-      minVal.textContent = `${stereoMinConvergence}°`;
+    // B/H slider
+    const bhRow = el('div', 'ip3-slider-row');
+    bhRow.innerHTML = `<label>B/H</label>`;
+    const bhSlider = document.createElement('input');
+    bhSlider.type = 'range';
+    bhSlider.min = 0.3; bhSlider.max = 2.0; bhSlider.step = 0.1;
+    bhSlider.value = stereoBH;
+    const bhVal = el('span', 'ip3-slider-val');
+    bhVal.textContent = stereoBH.toFixed(1);
+    bhSlider.addEventListener('input', () => {
+      stereoBH = parseFloat(bhSlider.value);
+      bhVal.textContent = stereoBH.toFixed(1);
+      updateStereoInfo();
+      if (stereoActive && selectedOppIdx >= 0) renderStereoOnGlobe(opportunities[selectedOppIdx]);
     });
-    minRow.append(minSlider, minVal);
-    body.append(minRow);
+    bhRow.append(bhSlider, bhVal);
+    body.append(bhRow);
 
-    // Max convergence
-    const maxRow = el('div', 'ip3-slider-row');
-    maxRow.innerHTML = `<label>Max Açı</label>`;
-    const maxSlider = document.createElement('input');
-    maxSlider.type = 'range';
-    maxSlider.min = 10; maxSlider.max = 90; maxSlider.step = 1;
-    maxSlider.value = stereoMaxConvergence;
-    const maxVal = el('span', 'ip3-slider-val');
-    maxVal.textContent = `${stereoMaxConvergence}°`;
-    maxSlider.addEventListener('input', () => {
-      stereoMaxConvergence = parseInt(maxSlider.value, 10);
-      maxVal.textContent = `${stereoMaxConvergence}°`;
-    });
-    maxRow.append(maxSlider, maxVal);
-    body.append(maxRow);
+    // Computed pitch info
+    const pitchInfo = el('div', 'ip3-empty');
+    pitchInfo.id = 'ip3-stereo-pitch-info';
+    pitchInfo.style.textAlign = 'left';
+    pitchInfo.style.fontSize = '11px';
+    pitchInfo.style.padding = '4px 0';
+    pitchInfo.style.color = '#8b949e';
+    const pitchAngle = Math.atan(stereoBH / 2) * 180 / Math.PI;
+    pitchInfo.textContent = `Pitch açısı: ±${pitchAngle.toFixed(1)}° · Yakınsama: ${(2 * pitchAngle).toFixed(1)}°`;
+    body.append(pitchInfo);
 
-    // Max time gap
-    const gapRow = el('div', 'ip3-slider-row');
-    gapRow.innerHTML = `<label>Max Aralık (s)</label>`;
-    const gapSlider = document.createElement('input');
-    gapSlider.type = 'range';
-    gapSlider.min = 1; gapSlider.max = 168; gapSlider.step = 1;
-    gapSlider.value = stereoMaxGapHours;
-    const gapVal = el('span', 'ip3-slider-val');
-    gapVal.textContent = `${stereoMaxGapHours}s`;
-    gapSlider.addEventListener('input', () => {
-      stereoMaxGapHours = parseInt(gapSlider.value, 10);
-      gapVal.textContent = `${stereoMaxGapHours}s`;
-    });
-    gapRow.append(gapSlider, gapVal);
-    body.append(gapRow);
-
-    // Find stereo pairs button
-    const btn = el('button', 'ip3-btn');
-    btn.textContent = 'Stereo Çiftleri Bul';
+    // Toggle button
+    const btn = el('button', stereoActive ? 'ip3-btn-danger' : 'ip3-btn');
+    btn.textContent = stereoActive ? 'Stereo Kapat' : 'Stereo Göster';
     btn.style.width = '100%';
-    btn.style.marginTop = '10px';
-    btn.disabled = opportunities.length < 2;
-    btn.addEventListener('click', () => findStereoPairs());
+    btn.style.marginTop = '8px';
+    btn.disabled = selectedOppIdx < 0;
+    btn.addEventListener('click', () => {
+      stereoActive = !stereoActive;
+      if (stereoActive && selectedOppIdx >= 0) {
+        renderStereoOnGlobe(opportunities[selectedOppIdx]);
+      } else if (!stereoActive && selectedOppIdx >= 0) {
+        renderOppOnGlobe(opportunities[selectedOppIdx]);
+        animateAroundOpp(opportunities[selectedOppIdx]);
+      }
+      renderLeft();
+    });
     body.append(btn);
 
-    if (opportunities.length < 2) {
+    if (selectedOppIdx < 0) {
       const warn = el('div', 'ip3-empty');
       warn.style.fontSize = '11px';
       warn.style.marginTop = '6px';
-      warn.textContent = 'Önce fırsat analizi yapın (en az 2 fırsat gerekli).';
+      warn.textContent = 'Önce bir fırsat seçin.';
       body.append(warn);
     }
 
-    // Results
-    if (stereoPairs.length > 0) {
+    // Stereo geometry info when active
+    if (stereoActive && selectedOppIdx >= 0) {
+      const opp = opportunities[selectedOppIdx];
+      const altKm = opp.altKm;
+      const pitchA = Math.atan(stereoBH / 2) * 180 / Math.PI;
+      const baseKm = stereoBH * altKm;
+
       const resWrap = el('div', 'ip3-stereo-results');
       const resTitle = el('div', 'ip3-stereo-title');
-      resTitle.textContent = `${stereoPairs.length} stereo çift bulundu`;
+      resTitle.textContent = 'STEREO GEOMETRİSİ';
       resWrap.append(resTitle);
 
-      for (let i = 0; i < stereoPairs.length; i++) {
-        const p = stereoPairs[i];
-        const card = el('div', 'ip3-stereo-card' + (i === selectedStereoIdx ? ' selected' : ''));
-        card.innerHTML = `
-          <div class="ip3-stereo-row">
-            <span class="ip3-stereo-conv">${p.convergence.toFixed(1)}°</span>
-            <span class="ip3-stereo-gap">Δ${fmtGap(p.gapH)}</span>
-          </div>
-          <div class="ip3-stereo-leg" style="color:${p.a.sat.color};">
-            A · ${fmtDate(p.a.time)} ${fmtTime(p.a.time)} · ${esc(p.a.sat.name)}
-          </div>
-          <div class="ip3-stereo-leg" style="color:${p.b.sat.color};">
-            B · ${fmtDate(p.b.time)} ${fmtTime(p.b.time)} · ${esc(p.b.sat.name)}
-          </div>
-        `;
-        card.addEventListener('click', () => selectStereoPair(i));
-        resWrap.append(card);
-      }
-
+      const card = el('div', 'ip3-stereo-card selected');
+      card.style.cursor = 'default';
+      card.innerHTML = `
+        <div class="ip3-stereo-row">
+          <span class="ip3-stereo-conv">B/H ${stereoBH.toFixed(1)}</span>
+          <span class="ip3-stereo-gap">${altKm.toFixed(0)} km yükseklik</span>
+        </div>
+        <div class="ip3-stereo-leg">Pitch: ±${pitchA.toFixed(1)}° · Yakınsama: ${(2 * pitchA).toFixed(1)}°</div>
+        <div class="ip3-stereo-leg">Taban mesafesi: ${baseKm.toFixed(0)} km</div>
+        <div class="ip3-stereo-leg" style="color:${opp.sat.color};">● ${esc(opp.sat.name)} · ${fmtDate(opp.time)} ${fmtTime(opp.time)}</div>
+      `;
+      resWrap.append(card);
       body.append(resWrap);
     }
   });
@@ -651,9 +636,8 @@ async function runAnalysis() {
   running = true;
   progress = 0;
   selectedOppIdx = -1;
-  selectedStereoIdx = -1;
+  stereoActive = false;
   opportunities = [];
-  stereoPairs = [];
   clearOppVisuals();
   renderLeft();
   updateOppStrip();
@@ -794,106 +778,156 @@ function addSel(entity) {
 function selectOpp(idx) {
   if (idx < 0 || idx >= opportunities.length) return;
   selectedOppIdx = idx;
-  selectedStereoIdx = -1;
   const opp = opportunities[idx];
 
-  renderOppOnGlobe(opp);
-  updateOppStrip();
-  animateAroundOpp(opp);
-  renderLeft(); // refresh stereo card selection
-}
-
-// ───────── Stereo planning ─────────
-
-/**
- * Angle between two viewing directions at the target (the "convergence
- * angle" of a stereo pair). Larger = more parallax.
- */
-function convergenceAngleDeg(opp1, opp2) {
-  const tgt = Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 0);
-  const s1 = Cesium.Cartesian3.fromDegrees(opp1.subSatLon, opp1.subSatLat, opp1.altKm * 1000);
-  const s2 = Cesium.Cartesian3.fromDegrees(opp2.subSatLon, opp2.subSatLat, opp2.altKm * 1000);
-  const v1 = Cesium.Cartesian3.subtract(s1, tgt, new Cesium.Cartesian3());
-  const v2 = Cesium.Cartesian3.subtract(s2, tgt, new Cesium.Cartesian3());
-  return Cesium.Cartesian3.angleBetween(v1, v2) * 180 / Math.PI;
-}
-
-function findStereoPairs() {
-  if (opportunities.length < 2) return;
-
-  const pairs = [];
-  for (let i = 0; i < opportunities.length; i++) {
-    for (let j = i + 1; j < opportunities.length; j++) {
-      const a = opportunities[i];
-      const b = opportunities[j];
-      const gapH = Math.abs(b.time.getTime() - a.time.getTime()) / 3600_000;
-      if (gapH > stereoMaxGapHours) continue;
-
-      const conv = convergenceAngleDeg(a, b);
-      if (!isFinite(conv)) continue;
-      if (conv < stereoMinConvergence || conv > stereoMaxConvergence) continue;
-
-      // Score: prefer convergence close to 25° (ideal for stereo), short time gap,
-      // and high combined opportunity scores
-      const convScore = 100 - Math.abs(conv - 25) * 2;
-      const gapScore = 100 * (1 - gapH / stereoMaxGapHours);
-      const oppScore = (a.score + b.score) / 2;
-      const score = convScore * 0.4 + gapScore * 0.2 + oppScore * 0.4;
-
-      pairs.push({ a, b, convergence: conv, gapH, score });
-    }
-  }
-
-  pairs.sort((x, y) => y.score - x.score);
-  stereoPairs = pairs.slice(0, 20); // cap
-  selectedStereoIdx = -1;
-  renderLeft();
-
-  if (stereoPairs.length === 0) {
-    showToast('Uygun stereo çift bulunamadı — açı/zaman aralığını genişletin', 'warning');
+  if (stereoActive) {
+    renderStereoOnGlobe(opp);
   } else {
-    showToast(`${stereoPairs.length} stereo çift bulundu`, 'success');
+    renderOppOnGlobe(opp);
+    animateAroundOpp(opp);
   }
+  updateOppStrip();
+  renderLeft();
 }
 
-function selectStereoPair(idx) {
-  if (idx < 0 || idx >= stereoPairs.length) return;
-  selectedStereoIdx = idx;
-  selectedOppIdx = -1;
-  const pair = stereoPairs[idx];
+// ───────── Stereo planning (same-pass, forward/backward pitch) ─────────
 
+function updateStereoInfo() {
+  const infoEl = document.getElementById('ip3-stereo-pitch-info');
+  if (!infoEl) return;
+  const pa = Math.atan(stereoBH / 2) * 180 / Math.PI;
+  infoEl.textContent = `Pitch açısı: ±${pa.toFixed(1)}° · Yakınsama: ${(2 * pa).toFixed(1)}°`;
+}
+
+function renderStereoOnGlobe(opp) {
   clearSelectionEntities();
+  drawSelectedPassArc(opp);
 
-  // Draw both opportunities on the globe
-  renderOppOnGlobeAccum(pair.a);
-  renderOppOnGlobeAccum(pair.b);
+  const satPos = propagateAt(opp.sat.satrec, opp.time);
+  if (!satPos) return;
 
-  // Stereo baseline line between the two satellites
-  const posA = propagateAt(pair.a.sat.satrec, pair.a.time);
-  const posB = propagateAt(pair.b.sat.satrec, pair.b.time);
-  if (posA && posB) {
-    const cartA = Cesium.Cartesian3.fromDegrees(posA.lon, posA.lat, posA.alt * 1000);
-    const cartB = Cesium.Cartesian3.fromDegrees(posB.lon, posB.lat, posB.alt * 1000);
+  const altKm = satPos.alt;
+  const baseKm = stereoBH * altKm;
+  const halfBaseKm = baseKm / 2;
+
+  // Orbital velocity for time offset
+  const rKm = 6371 + altKm;
+  const vKms = Math.sqrt(398600 / rKm);
+  const dtSec = halfBaseKm / vKms;
+
+  // Forward acquisition: sat BEFORE target, pitched forward to see it
+  // Backward acquisition: sat AFTER target, pitched backward to see it
+  const timeFwd = new Date(opp.time.getTime() - dtSec * 1000);
+  const timeBwd = new Date(opp.time.getTime() + dtSec * 1000);
+
+  const posFwd = propagateAt(opp.sat.satrec, timeFwd);
+  const posBwd = propagateAt(opp.sat.satrec, timeBwd);
+  if (!posFwd || !posBwd) return;
+
+  const preset = getPreset(presetId);
+  const heading = satHeadingAt(opp.sat.satrec, opp.time);
+
+  // Both acquisitions image the same target area
+  const corners = cornersAroundTarget(targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm);
+  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+  const fpCoords = [];
+  for (const c of corners) fpCoords.push(c[1], c[0]);
+
+  const acquisitions = [
+    { pos: posFwd, label: 'Ön Çekim (İleri)', time: timeFwd, color: Cesium.Color.CYAN },
+    { pos: posBwd, label: 'Arka Çekim (Geri)', time: timeBwd, color: Cesium.Color.ORANGE },
+  ];
+
+  for (const acq of acquisitions) {
+    const satCart = Cesium.Cartesian3.fromDegrees(acq.pos.lon, acq.pos.lat, acq.pos.alt * 1000);
+    const subSatCart = Cesium.Cartesian3.fromDegrees(acq.pos.lon, acq.pos.lat, 0);
+
+    // Satellite marker
     addSel({
-      name: 'Stereo taban çizgisi',
+      position: satCart,
+      point: { pixelSize: 14, color: acq.color, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
+      label: {
+        text: `${acq.label}\n${fmtTime(acq.time)}`,
+        font: 'bold 12px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -26),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    // Nadir line
+    addSel({
       polyline: {
-        positions: [cartA, cartB],
-        width: 2,
+        positions: [satCart, subSatCart],
+        width: 1,
         material: new Cesium.PolylineDashMaterialProperty({
-          color: Cesium.Color.MAGENTA,
-          dashLength: 20,
+          color: acq.color.withAlpha(0.3), dashLength: 12,
         }),
         arcType: Cesium.ArcType.NONE,
       },
     });
+
+    // Sensor cone edges to target footprint
+    for (let ci = 0; ci < 4; ci++) {
+      addSel({
+        polyline: {
+          positions: [satCart, cornerCarts[ci]],
+          width: 1.5,
+          material: acq.color.withAlpha(0.5),
+          arcType: Cesium.ArcType.NONE,
+        },
+      });
+    }
+
+    // FOV walls
+    for (let ci = 0; ci < 4; ci++) {
+      const next = (ci + 1) % 4;
+      addSel({
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy([satCart, cornerCarts[ci], cornerCarts[next]]),
+          material: acq.color.withAlpha(0.06),
+          perPositionHeight: true,
+        },
+      });
+    }
   }
 
-  // Zoom to show both satellites + the target
-  const centerLat = (pair.a.subSatLat + pair.b.subSatLat + targetLat) / 3;
-  const centerLon = (pair.a.subSatLon + pair.b.subSatLon + targetLon) / 3;
-  const maxAlt = Math.max(pair.a.altKm, pair.b.altKm);
+  // Shared target footprint on the ground
+  addSel({
+    name: 'Stereo hedef alanı',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+      material: Cesium.Color.MAGENTA.withAlpha(0.2),
+      outline: true,
+      outlineColor: Cesium.Color.MAGENTA.withAlpha(0.8),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // Stereo baseline between the two satellite positions
+  const cartFwd = Cesium.Cartesian3.fromDegrees(posFwd.lon, posFwd.lat, posFwd.alt * 1000);
+  const cartBwd = Cesium.Cartesian3.fromDegrees(posBwd.lon, posBwd.lat, posBwd.alt * 1000);
+  addSel({
+    name: 'Stereo taban çizgisi',
+    polyline: {
+      positions: [cartFwd, cartBwd],
+      width: 2,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.MAGENTA, dashLength: 16,
+      }),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Camera: show both satellite positions + target
+  const centerLat = (posFwd.lat + posBwd.lat + targetLat) / 3;
+  const centerLon = (posFwd.lon + posBwd.lon + targetLon) / 3;
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(centerLon, centerLat - 6, maxAlt * 1000 * 2.5),
+    destination: Cesium.Cartesian3.fromDegrees(centerLon, centerLat - 6, altKm * 1000 * 2.5),
     orientation: {
       heading: 0,
       pitch: Cesium.Math.toRadians(-45),
@@ -901,91 +935,6 @@ function selectStereoPair(idx) {
     },
     duration: 1.8,
   });
-
-  updateOppStrip();
-  renderLeft();
-}
-
-/** Like renderOppOnGlobe but additive (doesn't clear previous entities). */
-function renderOppOnGlobeAccum(opp) {
-  drawSelectedPassArc(opp);
-
-  const satPos = propagateAt(opp.sat.satrec, opp.time);
-  if (!satPos) return;
-
-  const altM = satPos.alt * 1000;
-  const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
-  const subSatCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, 0);
-  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
-
-  addSel({
-    position: satCart,
-    point: { pixelSize: 14, color: satColor, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
-    label: {
-      text: `${opp.sat.name}\n${satPos.alt.toFixed(0)} km`,
-      font: 'bold 12px sans-serif',
-      fillColor: Cesium.Color.WHITE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      pixelOffset: new Cesium.Cartesian2(0, -26),
-    },
-  });
-
-  // Nadir line
-  addSel({
-    polyline: {
-      positions: [satCart, subSatCart],
-      width: 1,
-      material: new Cesium.PolylineDashMaterialProperty({
-        color: Cesium.Color.CYAN.withAlpha(0.5), dashLength: 12,
-      }),
-      arcType: Cesium.ArcType.NONE,
-    },
-  });
-
-  // Footprint
-  const preset = getPreset(presetId);
-  const heading = satHeadingAt(opp.sat.satrec, opp.time);
-  const corners = cornersAroundTarget(
-    targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm
-  );
-  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
-  const fpCoords = [];
-  for (const c of corners) fpCoords.push(c[1], c[0]);
-  addSel({
-    polygon: {
-      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
-      material: satColor.withAlpha(0.22),
-      outline: true,
-      outlineColor: satColor.withAlpha(0.9),
-      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-    },
-  });
-
-  // Sensor cone edges
-  for (let ci = 0; ci < 4; ci++) {
-    addSel({
-      polyline: {
-        positions: [satCart, cornerCarts[ci]],
-        width: 1.5,
-        material: satColor.withAlpha(0.55),
-        arcType: Cesium.ArcType.NONE,
-      },
-    });
-  }
-
-  // FOV walls
-  for (let ci = 0; ci < 4; ci++) {
-    const next = (ci + 1) % 4;
-    addSel({
-      polygon: {
-        hierarchy: new Cesium.PolygonHierarchy([satCart, cornerCarts[ci], cornerCarts[next]]),
-        material: satColor.withAlpha(0.07),
-        perPositionHeight: true,
-      },
-    });
-  }
 }
 
 function renderOppOnGlobe(opp) {
@@ -1253,13 +1202,6 @@ function fmtDate(d) {
 function fmtTime(d) {
   return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
-function fmtGap(hours) {
-  if (hours < 1) return `${Math.round(hours * 60)}dk`;
-  if (hours < 24) return `${hours.toFixed(1)}s`;
-  const days = hours / 24;
-  return `${days.toFixed(1)}g`;
-}
-
 function cesiumColor(cssColor, alpha) {
   return Cesium.Color.fromCssColorString(cssColor).withAlpha(alpha);
 }
