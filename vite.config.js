@@ -14,6 +14,7 @@ export default defineConfig({
         antenna: resolve(__dirname, 'antenna-src.html'),
         'gs-planner': resolve(__dirname, 'gs-planner-src.html'),
         'imaging-planner': resolve(__dirname, 'imaging-planner-src.html'),
+        'imaging-planner-3d': resolve(__dirname, 'imaging-planner-3d-src.html'),
         'pass-tracker': resolve(__dirname, 'pass-tracker-src.html'),
       },
     },

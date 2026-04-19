@@ -229,6 +229,12 @@ export function buildRightPanel(panel) {
           </svg>
           Goruntuleme
         </a>
+        <a href="./imaging-planner-3d.html" target="_blank" class="mobile-link" title="Goruntuleme Planlayici 3D (Beta)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          3D<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;letter-spacing:0.3px;">BETA</span>
+        </a>
         <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer Istasyonu Planlama">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>

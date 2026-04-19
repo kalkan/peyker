@@ -51,6 +51,14 @@ if (existsSync(imagingPlannerPath)) {
   console.log('  Copied dist/imaging-planner-src.html → imaging-planner.html');
 }
 
+// Copy imaging-planner-3d-src.html → imaging-planner-3d.html (at repo root)
+const imaging3dPath = join(dist, 'imaging-planner-3d-src.html');
+if (existsSync(imaging3dPath)) {
+  const imaging3dHtml = readFileSync(imaging3dPath, 'utf8');
+  writeFileSync(join(root, 'imaging-planner-3d.html'), imaging3dHtml);
+  console.log('  Copied dist/imaging-planner-3d-src.html → imaging-planner-3d.html');
+}
+
 // Copy pass-tracker-src.html → pass-tracker.html (at repo root)
 const passTrackerPath = join(dist, 'pass-tracker-src.html');
 if (existsSync(passTrackerPath)) {
