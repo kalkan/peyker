@@ -285,15 +285,15 @@ body {
   height: 100%;
 }
 
-/* ── Opportunity strip (bottom overlay) ──────────────── */
+/* ── Opportunity strip (top overlay) ─────────────────── */
 .ip3-opp-strip {
   position: absolute;
-  bottom: 42px;
-  left: 0;
-  right: 0;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   z-index: 5;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   padding: 10px 16px;
   overflow-x: auto;
   scrollbar-width: thin;
@@ -302,49 +302,55 @@ body {
 
 .ip3-opp-card {
   flex-shrink: 0;
-  background: rgba(22,27,34,0.92);
+  background: rgba(22,27,34,0.94);
   border: 1px solid #30363d;
-  border-radius: 10px;
-  padding: 10px 14px;
-  min-width: 180px;
+  border-radius: 12px;
+  padding: 12px 18px;
+  min-width: 220px;
   cursor: pointer;
   transition: all 0.15s;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .ip3-opp-card:hover { border-color: #58a6ff; }
 .ip3-opp-card.selected {
   border-color: #58a6ff;
-  background: rgba(88,166,255,0.12);
+  background: rgba(88,166,255,0.15);
+  box-shadow: 0 4px 16px rgba(88,166,255,0.3);
 }
 
 .ip3-opp-time {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   color: #e6edf3;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: -0.3px;
 }
 .ip3-opp-date {
-  font-size: 10px;
+  font-size: 12px;
   color: #8b949e;
 }
 .ip3-opp-meta {
-  font-size: 11px;
+  font-size: 13px;
   color: #c9d1d9;
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .ip3-opp-sat {
-  font-size: 10px;
-  color: #8b949e;
-  margin-top: 4px;
+  font-size: 12px;
+  color: #c9d1d9;
+  margin-top: 6px;
+  font-weight: 600;
 }
 
 .ip3-opp-stars {
   color: #d29922;
-  font-size: 11px;
-  letter-spacing: 1px;
+  font-size: 15px;
+  letter-spacing: 2px;
+  margin-top: 4px;
 }
 
 /* ── Toast ───────────────────────────────────────────── */

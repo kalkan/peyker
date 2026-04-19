@@ -743,79 +743,54 @@ function renderOppOnGlobe(opp) {
     },
   });
 
-  // ──── 4. Footprint + sensor cone ────
-  const pre = propagateAt(opp.sat.satrec, new Date(opp.time.getTime() - 1000));
-  const post = propagateAt(opp.sat.satrec, new Date(opp.time.getTime() + 1000));
-  if (pre && post) {
-    const trackPts = [
-      { time: new Date(opp.time.getTime() - 1000), lat: pre.lat, lon: pre.lon, alt: pre.alt },
-      { time: opp.time, lat: satPos.lat, lon: satPos.lon, alt: satPos.alt },
-      { time: new Date(opp.time.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
-    ];
-    const preset = getPreset(presetId);
-    const rect = computeFootprintRect(
-      trackPts, 1, preset.swathKm, preset.frameHeightKm, opp.rollDeg, pitchDeg
-    );
-    if (rect && rect.corners && rect.corners.length === 4) {
-      const corners = rect.corners; // [[lat,lon], ...]
-      const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+  // ──── 4. Footprint + sensor cone (centered on target) ────
+  const preset = getPreset(presetId);
+  const heading = satHeadingAt(opp.sat.satrec, opp.time); // radians from north
+  const corners = cornersAroundTarget(
+    targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm
+  );
+  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
 
-      // Ground footprint polygon (filled)
-      const fpCoords = [];
-      for (const c of corners) fpCoords.push(c[1], c[0]);
-      addSel({
-        name: 'Sensör karesi',
-        polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
-          material: satColor.withAlpha(0.25),
-          outline: true,
-          outlineColor: satColor.withAlpha(0.9),
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-      });
+  // Ground footprint polygon (filled) — centered on the target
+  const fpCoords = [];
+  for (const c of corners) fpCoords.push(c[1], c[0]);
+  addSel({
+    name: 'Sensör karesi',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+      material: satColor.withAlpha(0.25),
+      outline: true,
+      outlineColor: satColor.withAlpha(0.9),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
 
-      // Footprint center marker
-      if (rect.center) {
-        addSel({
-          position: Cesium.Cartesian3.fromDegrees(rect.center[1], rect.center[0], 0),
-          point: {
-            pixelSize: 8,
-            color: satColor,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 1,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          },
-        });
-      }
+  // ── Sensor cone: 4 edge lines from sat to each footprint corner ──
+  for (let ci = 0; ci < 4; ci++) {
+    addSel({
+      polyline: {
+        positions: [satCart, cornerCarts[ci]],
+        width: 1.5,
+        material: satColor.withAlpha(0.6),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+  }
 
-      // ── Sensor cone: 4 edge lines from sat to each corner ──
-      for (let ci = 0; ci < 4; ci++) {
-        addSel({
-          polyline: {
-            positions: [satCart, cornerCarts[ci]],
-            width: 1.5,
-            material: satColor.withAlpha(0.6),
-            arcType: Cesium.ArcType.NONE,
-          },
-        });
-      }
-
-      // ── FOV wall polygons (4 triangular faces) ──
-      for (let ci = 0; ci < 4; ci++) {
-        const next = (ci + 1) % 4;
-        addSel({
-          polygon: {
-            hierarchy: new Cesium.PolygonHierarchy([
-              satCart, cornerCarts[ci], cornerCarts[next],
-            ]),
-            material: satColor.withAlpha(0.08),
-            outline: false,
-            perPositionHeight: true,
-          },
-        });
-      }
-    }
+  // ── FOV wall polygons (4 triangular faces) ──
+  for (let ci = 0; ci < 4; ci++) {
+    const next = (ci + 1) % 4;
+    addSel({
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy([
+          satCart, cornerCarts[ci], cornerCarts[next],
+        ]),
+        material: satColor.withAlpha(0.08),
+        outline: false,
+        perPositionHeight: true,
+      },
+    });
   }
 
   // ──── 5. Ground swath strip (±5 min around opp time) ────
@@ -973,6 +948,62 @@ function fmtTime(d) {
 
 function cesiumColor(cssColor, alpha) {
   return Cesium.Color.fromCssColorString(cssColor).withAlpha(alpha);
+}
+
+/**
+ * Satellite heading at time `t` (radians, measured clockwise from north),
+ * derived from the ground projection of the orbit 1s ahead.
+ */
+function satHeadingAt(satrec, t) {
+  const now = propagateAt(satrec, t);
+  const ahead = propagateAt(satrec, new Date(t.getTime() + 1000));
+  if (!now || !ahead) return 0;
+  const φ1 = now.lat * Math.PI / 180;
+  const φ2 = ahead.lat * Math.PI / 180;
+  const Δλ = (ahead.lon - now.lon) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return Math.atan2(y, x);
+}
+
+/**
+ * 4 corners [lat, lon] of a rectangle centered on (tgtLat, tgtLon),
+ * with along-track length = frameKm aligned with `headingRad`, and
+ * cross-track width = swathKm. Uses small-angle flat-earth math which
+ * is accurate enough for sensor footprints up to a few hundred km.
+ *
+ * Returns corners in order: [tl, tr, br, bl] where "t"op is forward
+ * along the satellite heading.
+ */
+function cornersAroundTarget(tgtLat, tgtLon, headingRad, swathKm, frameKm) {
+  const cosLat = Math.cos(tgtLat * Math.PI / 180);
+  const degPerKmLat = 1 / 111.0;
+  const degPerKmLon = 1 / (111.0 * Math.max(cosLat, 0.01));
+
+  // Unit vectors in (north, east) coords
+  const alongN = Math.cos(headingRad);
+  const alongE = Math.sin(headingRad);
+  const crossN = Math.cos(headingRad + Math.PI / 2); // = -sin(h)
+  const crossE = Math.sin(headingRad + Math.PI / 2); // =  cos(h)
+
+  const a = frameKm / 2;
+  const c = swathKm / 2;
+
+  // [along, cross] offsets for tl, tr, br, bl
+  const offsets = [
+    [+a, -c],
+    [+a, +c],
+    [-a, +c],
+    [-a, -c],
+  ];
+
+  return offsets.map(([oa, oc]) => {
+    const dN = alongN * oa + crossN * oc;
+    const dE = alongE * oa + crossE * oc;
+    const dLat = dN * degPerKmLat;
+    const dLon = dE * degPerKmLon;
+    return [tgtLat + dLat, tgtLon + dLon];
+  });
 }
 
 function showToast(message, type = 'info') {
