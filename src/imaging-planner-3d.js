@@ -31,8 +31,8 @@ import { getColor } from './sat/presets.js';
 let viewer = null;
 let targetLat = null, targetLon = null, targetName = null;
 let satellites = []; // { noradId, name, color, satrec, tle }
-let presetId = 'sentinel-2';
-let rollDeg = 10;
+let presetId = 'custom';
+let rollDeg = 20;
 let pitchDeg = 0;
 let opportunities = []; // flattened across all satellites
 let selectedOppIdx = -1;
@@ -43,9 +43,7 @@ let progress = 0;
 let targetEntity = null;
 const orbitEntities = new Map(); // noradId -> Entity (polyline)
 const oppMarkerEntities = []; // Entity[]
-let satEntity = null;
-let footprintEntity = null;
-let pointingLineEntity = null;
+const selectionEntities = []; // all entities for selected-opp 3D viz
 
 // ───────── Init ─────────
 function init() {
@@ -86,6 +84,7 @@ function init() {
   initCesium();
   renderLeft();
   applyUrlTarget();
+  importMainAppSatellites();
 }
 
 function initCesium() {
@@ -141,6 +140,52 @@ function applyUrlTarget() {
       }
     }
   } catch { /* ignore */ }
+}
+
+// ───────── Auto-import from main app ─────────
+async function importMainAppSatellites() {
+  try {
+    const saved = localStorage.getItem('sat-groundtrack-state');
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed.satellites) || parsed.satellites.length === 0) return;
+
+    const toImport = parsed.satellites.filter(
+      s => s.noradId && !satellites.find(x => x.noradId === s.noradId)
+    );
+    if (toImport.length === 0) return;
+
+    showToast(`Ana ekrandan ${toImport.length} uydu aktarılıyor...`, 'info');
+
+    const results = await Promise.allSettled(
+      toImport.map(async (s) => {
+        const tle = await fetchTLE(s.noradId);
+        const satrec = parseTLE(tle.line1, tle.line2);
+        return {
+          noradId: s.noradId,
+          name: tle.name || s.name,
+          color: s.color || getColor(satellites.length),
+          satrec,
+          tle: { line1: tle.line1, line2: tle.line2 },
+        };
+      })
+    );
+
+    let count = 0;
+    for (const r of results) {
+      if (r.status === 'fulfilled' && !satellites.find(x => x.noradId === r.value.noradId)) {
+        satellites.push(r.value);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      renderLeft();
+      showToast(`${count} uydu ana ekrandan aktarıldı`, 'success');
+    }
+  } catch (err) {
+    console.warn('Main app import failed:', err);
+  }
 }
 
 // ───────── Left panel ─────────
@@ -277,29 +322,14 @@ function buildSatSection() {
   row.append(input, addBtn);
   sec.append(row);
 
-  // Presets (quick-add)
-  const presets = [
-    { id: 25544, name: 'ISS' },
-    { id: 43013, name: 'NOAA 20' },
-    { id: 40069, name: 'METEOR-M 2' },
-    { id: 39084, name: 'Landsat-8' },
-  ];
-  const chipsRow = el('div', 'ip3-input-row');
-  chipsRow.style.flexWrap = 'wrap';
-  chipsRow.style.marginTop = '6px';
-  for (const p of presets) {
-    const btn = el('button', 'ip3-btn');
-    btn.textContent = p.name;
-    btn.style.fontSize = '11px';
-    btn.style.padding = '4px 9px';
-    btn.addEventListener('click', async () => {
-      if (satellites.find(s => s.noradId === p.id)) return;
-      input.value = p.id;
-      await doAdd();
-    });
-    chipsRow.append(btn);
-  }
-  sec.append(chipsRow);
+  // Re-import button
+  const reimportBtn = el('button', 'ip3-btn');
+  reimportBtn.textContent = 'Ana Ekrandan Aktar';
+  reimportBtn.style.fontSize = '11px';
+  reimportBtn.style.marginTop = '6px';
+  reimportBtn.style.width = '100%';
+  reimportBtn.addEventListener('click', () => importMainAppSatellites());
+  sec.append(reimportBtn);
 
   // List
   if (satellites.length === 0) {
@@ -581,9 +611,18 @@ function clearOppVisuals() {
   orbitEntities.clear();
   for (const e of oppMarkerEntities) viewer.entities.remove(e);
   oppMarkerEntities.length = 0;
-  if (satEntity) { viewer.entities.remove(satEntity); satEntity = null; }
-  if (footprintEntity) { viewer.entities.remove(footprintEntity); footprintEntity = null; }
-  if (pointingLineEntity) { viewer.entities.remove(pointingLineEntity); pointingLineEntity = null; }
+  clearSelectionEntities();
+}
+
+function clearSelectionEntities() {
+  for (const e of selectionEntities) {
+    try { viewer.entities.remove(e); } catch { /* ignore */ }
+  }
+  selectionEntities.length = 0;
+}
+
+function addSel(entity) {
+  selectionEntities.push(viewer.entities.add(entity));
 }
 
 // ───────── Opportunity selection + 3D scene ─────────
@@ -598,81 +637,216 @@ function selectOpp(idx) {
 }
 
 function renderOppOnGlobe(opp) {
-  // Remove previous selection visuals
-  if (satEntity) { viewer.entities.remove(satEntity); satEntity = null; }
-  if (footprintEntity) { viewer.entities.remove(footprintEntity); footprintEntity = null; }
-  if (pointingLineEntity) { viewer.entities.remove(pointingLineEntity); pointingLineEntity = null; }
+  clearSelectionEntities();
 
   const satPos = propagateAt(opp.sat.satrec, opp.time);
   if (!satPos) return;
 
-  const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, satPos.alt * 1000);
+  const altM = satPos.alt * 1000;
+  const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
+  const subSatCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, 0);
   const tgtCart = Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 0);
+  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
 
-  // Satellite 3D marker
-  satEntity = viewer.entities.add({
+  // ──── 1. Satellite 3D model marker ────
+  addSel({
     name: opp.sat.name,
     position: satCart,
     point: {
-      pixelSize: 14,
-      color: cesiumColor(opp.sat.color, 1.0),
+      pixelSize: 16,
+      color: satColor,
       outlineColor: Cesium.Color.WHITE,
       outlineWidth: 2,
     },
     label: {
       text: `${opp.sat.name}\n${satPos.alt.toFixed(0)} km`,
-      font: '11px sans-serif',
+      font: 'bold 12px sans-serif',
       fillColor: Cesium.Color.WHITE,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 2,
       style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      pixelOffset: new Cesium.Cartesian2(0, -26),
+      pixelOffset: new Cesium.Cartesian2(0, -28),
     },
   });
 
-  // Pointing line: satellite → target
-  pointingLineEntity = viewer.entities.add({
+  // ──── 2. Nadir line (satellite → sub-satellite point) ────
+  addSel({
+    name: 'Nadir',
+    polyline: {
+      positions: [satCart, subSatCart],
+      width: 1,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.CYAN.withAlpha(0.5),
+        dashLength: 12,
+      }),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Sub-satellite ground ring
+  addSel({
+    name: 'Alt-uydu noktası',
+    position: subSatCart,
+    ellipse: {
+      semiMajorAxis: 15_000,
+      semiMinorAxis: 15_000,
+      material: Cesium.Color.CYAN.withAlpha(0.15),
+      outline: true,
+      outlineColor: Cesium.Color.CYAN.withAlpha(0.6),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // ──── 3. Pointing line (satellite → target) ────
+  addSel({
     name: 'Görüş çizgisi',
     polyline: {
       positions: [satCart, tgtCart],
       width: 2,
       material: new Cesium.PolylineDashMaterialProperty({
         color: Cesium.Color.fromCssColorString('#ffd33d'),
+        dashLength: 16,
       }),
       arcType: Cesium.ArcType.NONE,
     },
   });
 
-  // Footprint polygon: reuse computeFootprintRect with a 3-point synthetic track
+  // ──── 4. Footprint + sensor cone ────
   const pre = propagateAt(opp.sat.satrec, new Date(opp.time.getTime() - 1000));
   const post = propagateAt(opp.sat.satrec, new Date(opp.time.getTime() + 1000));
   if (pre && post) {
-    const trackPoints = [
+    const trackPts = [
       { time: new Date(opp.time.getTime() - 1000), lat: pre.lat, lon: pre.lon, alt: pre.alt },
       { time: opp.time, lat: satPos.lat, lon: satPos.lon, alt: satPos.alt },
       { time: new Date(opp.time.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
     ];
     const preset = getPreset(presetId);
     const rect = computeFootprintRect(
-      trackPoints, 1, preset.swathKm, preset.frameHeightKm, opp.rollDeg, pitchDeg
+      trackPts, 1, preset.swathKm, preset.frameHeightKm, opp.rollDeg, pitchDeg
     );
-    if (rect && rect.corners) {
-      const coords = [];
-      for (const c of rect.corners) {
-        coords.push(c[1], c[0]); // lon, lat
-      }
-      footprintEntity = viewer.entities.add({
+    if (rect && rect.corners && rect.corners.length === 4) {
+      const corners = rect.corners; // [[lat,lon], ...]
+      const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+
+      // Ground footprint polygon (filled)
+      const fpCoords = [];
+      for (const c of corners) fpCoords.push(c[1], c[0]);
+      addSel({
         name: 'Sensör karesi',
         polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(coords),
-          material: Cesium.Color.fromCssColorString(opp.sat.color).withAlpha(0.3),
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+          material: satColor.withAlpha(0.25),
           outline: true,
-          outlineColor: Cesium.Color.fromCssColorString(opp.sat.color),
+          outlineColor: satColor.withAlpha(0.9),
+          outlineWidth: 2,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         },
       });
+
+      // Footprint center marker
+      if (rect.center) {
+        addSel({
+          position: Cesium.Cartesian3.fromDegrees(rect.center[1], rect.center[0], 0),
+          point: {
+            pixelSize: 8,
+            color: satColor,
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 1,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          },
+        });
+      }
+
+      // ── Sensor cone: 4 edge lines from sat to each corner ──
+      for (let ci = 0; ci < 4; ci++) {
+        addSel({
+          polyline: {
+            positions: [satCart, cornerCarts[ci]],
+            width: 1.5,
+            material: satColor.withAlpha(0.6),
+            arcType: Cesium.ArcType.NONE,
+          },
+        });
+      }
+
+      // ── FOV wall polygons (4 triangular faces) ──
+      for (let ci = 0; ci < 4; ci++) {
+        const next = (ci + 1) % 4;
+        addSel({
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy([
+              satCart, cornerCarts[ci], cornerCarts[next],
+            ]),
+            material: satColor.withAlpha(0.08),
+            outline: false,
+            perPositionHeight: true,
+          },
+        });
+      }
     }
   }
+
+  // ──── 5. Ground swath strip (±5 min around opp time) ────
+  drawSwathStrip(opp);
+}
+
+function drawSwathStrip(opp) {
+  const preset = getPreset(presetId);
+  const halfWindowMs = 5 * 60 * 1000;
+  const stepMs = 10_000;
+  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
+
+  const leftEdge = [];
+  const rightEdge = [];
+
+  for (let dt = -halfWindowMs; dt <= halfWindowMs; dt += stepMs) {
+    const t = new Date(opp.time.getTime() + dt);
+    const pre = propagateAt(opp.sat.satrec, new Date(t.getTime() - 1000));
+    const cur = propagateAt(opp.sat.satrec, t);
+    const post = propagateAt(opp.sat.satrec, new Date(t.getTime() + 1000));
+    if (!pre || !cur || !post) continue;
+
+    const trackPts = [
+      { time: new Date(t.getTime() - 1000), lat: pre.lat, lon: pre.lon, alt: pre.alt },
+      { time: t, lat: cur.lat, lon: cur.lon, alt: cur.alt },
+      { time: new Date(t.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
+    ];
+    const rect = computeFootprintRect(
+      trackPts, 1, preset.swathKm, preset.frameHeightKm, opp.rollDeg, 0
+    );
+    if (!rect || !rect.corners || rect.corners.length < 4) continue;
+
+    // corners: [tl, tr, br, bl] — left edge = [tl, bl], right edge = [tr, br]
+    leftEdge.push(rect.corners[0]);
+    leftEdge.push(rect.corners[3]);
+    rightEdge.push(rect.corners[1]);
+    rightEdge.push(rect.corners[2]);
+  }
+
+  if (leftEdge.length < 4) return;
+
+  // Build a closed polygon from left edge forward + right edge reversed
+  const stripCoords = [];
+  const uniqueLeft = leftEdge.filter((_, i) => i % 2 === 0); // take tl only
+  const uniqueRight = rightEdge.filter((_, i) => i % 2 === 0); // take tr only
+
+  for (const c of uniqueLeft) stripCoords.push(c[1], c[0]);
+  for (let i = uniqueRight.length - 1; i >= 0; i--) {
+    stripCoords.push(uniqueRight[i][1], uniqueRight[i][0]);
+  }
+
+  if (stripCoords.length < 6) return;
+
+  addSel({
+    name: 'Tarama şeridi',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(stripCoords),
+      material: satColor.withAlpha(0.1),
+      outline: true,
+      outlineColor: satColor.withAlpha(0.4),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
 }
 
 function animateAroundOpp(opp) {
