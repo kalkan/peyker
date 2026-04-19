@@ -252,6 +252,76 @@ body {
   text-align: right;
 }
 
+/* Collapsible section */
+.ip3-collapsible { padding: 0; }
+.ip3-collapsible-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.ip3-collapsible-head:hover { background: #1c2129; }
+.ip3-caret {
+  color: #8b949e;
+  font-size: 12px;
+  transition: color 0.15s;
+}
+.ip3-collapsible-head:hover .ip3-caret { color: #c9d1d9; }
+.ip3-collapsible-body {
+  padding: 0 16px 12px;
+}
+
+/* Stereo results */
+.ip3-stereo-results {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #21262d;
+}
+.ip3-stereo-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7ee787;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+.ip3-stereo-card {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ip3-stereo-card:hover { border-color: #58a6ff; }
+.ip3-stereo-card.selected {
+  border-color: #bc8cff;
+  background: rgba(188,140,255,0.1);
+}
+.ip3-stereo-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.ip3-stereo-conv {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bc8cff;
+  font-family: monospace;
+}
+.ip3-stereo-gap {
+  font-size: 11px;
+  color: #8b949e;
+  font-family: monospace;
+}
+.ip3-stereo-leg {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 /* Progress */
 .ip3-progress {
   margin-top: 10px;

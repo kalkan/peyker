@@ -39,6 +39,19 @@ let selectedOppIdx = -1;
 let running = false;
 let progress = 0;
 
+// Collapsible section open state (persists across re-renders)
+const sectionOpen = {
+  pitch: false,
+  stereo: false,
+};
+
+// Stereo planning state
+let stereoMinConvergence = 15;
+let stereoMaxConvergence = 40;
+let stereoMaxGapHours = 72;
+let stereoPairs = []; // { a, b, convergence, gapH, score }
+let selectedStereoIdx = -1;
+
 // Cesium entities we manage
 let targetEntity = null;
 const oppMarkerEntities = []; // Entity[]
@@ -195,7 +208,169 @@ function renderLeft() {
   c.append(buildTargetSection());
   c.append(buildSatSection());
   c.append(buildSettingsSection());
+  c.append(buildPitchSection());
+  c.append(buildStereoSection());
   c.append(buildRunSection());
+}
+
+/** Collapsible section helper. `key` is used to persist open state across re-renders. */
+function buildCollapsible(key, title, defaultOpen, fillBody) {
+  const isOpen = sectionOpen[key] !== undefined ? sectionOpen[key] : defaultOpen;
+  const sec = el('div', 'ip3-section ip3-collapsible');
+  const header = el('div', 'ip3-collapsible-head');
+  header.innerHTML = `
+    <span class="ip3-section-title" style="margin:0;">${title}</span>
+    <span class="ip3-caret">${isOpen ? '▾' : '▸'}</span>
+  `;
+  const body = el('div', 'ip3-collapsible-body');
+  if (!isOpen) body.style.display = 'none';
+  fillBody(body);
+  header.addEventListener('click', () => {
+    sectionOpen[key] = !sectionOpen[key];
+    const nowOpen = sectionOpen[key];
+    body.style.display = nowOpen ? '' : 'none';
+    header.querySelector('.ip3-caret').textContent = nowOpen ? '▾' : '▸';
+  });
+  sec.append(header, body);
+  return sec;
+}
+
+function buildPitchSection() {
+  return buildCollapsible('pitch', '📷 Pitch Ayarı', false, (body) => {
+    const preset = getPreset(presetId);
+    const maxP = Math.max(preset.maxPitchDeg, 30); // allow up to 30° even for non-agile
+
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = preset.maxPitchDeg > 0
+      ? `${preset.name} pitch aralığı: ±${preset.maxPitchDeg}°. Pitch, uydunun öne/arkaya bakmasıdır — geçiş penceresini uzatır.`
+      : `${preset.name} çevik değil. Yine de pitch'i simülasyon için ayarlayabilirsiniz.`;
+    body.append(info);
+
+    const row = el('div', 'ip3-slider-row');
+    row.innerHTML = `<label>Pitch ±</label>`;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = 0; slider.max = maxP; slider.step = 1;
+    slider.value = pitchDeg;
+    const val = el('span', 'ip3-slider-val');
+    val.textContent = `${pitchDeg}°`;
+    slider.addEventListener('input', () => {
+      pitchDeg = parseInt(slider.value, 10);
+      val.textContent = `${pitchDeg}°`;
+      // Re-render current opp if any
+      if (selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+    });
+    row.append(slider, val);
+    body.append(row);
+  });
+}
+
+function buildStereoSection() {
+  return buildCollapsible('stereo', '🎯 Stereo Planlama', false, (body) => {
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = 'Farklı açılardan aynı hedefi gören fırsat çiftlerini bul. İdeal yakınsama açısı 15-40°.';
+    body.append(info);
+
+    // Min convergence
+    const minRow = el('div', 'ip3-slider-row');
+    minRow.innerHTML = `<label>Min Açı</label>`;
+    const minSlider = document.createElement('input');
+    minSlider.type = 'range';
+    minSlider.min = 5; minSlider.max = 60; minSlider.step = 1;
+    minSlider.value = stereoMinConvergence;
+    const minVal = el('span', 'ip3-slider-val');
+    minVal.textContent = `${stereoMinConvergence}°`;
+    minSlider.addEventListener('input', () => {
+      stereoMinConvergence = parseInt(minSlider.value, 10);
+      minVal.textContent = `${stereoMinConvergence}°`;
+    });
+    minRow.append(minSlider, minVal);
+    body.append(minRow);
+
+    // Max convergence
+    const maxRow = el('div', 'ip3-slider-row');
+    maxRow.innerHTML = `<label>Max Açı</label>`;
+    const maxSlider = document.createElement('input');
+    maxSlider.type = 'range';
+    maxSlider.min = 10; maxSlider.max = 90; maxSlider.step = 1;
+    maxSlider.value = stereoMaxConvergence;
+    const maxVal = el('span', 'ip3-slider-val');
+    maxVal.textContent = `${stereoMaxConvergence}°`;
+    maxSlider.addEventListener('input', () => {
+      stereoMaxConvergence = parseInt(maxSlider.value, 10);
+      maxVal.textContent = `${stereoMaxConvergence}°`;
+    });
+    maxRow.append(maxSlider, maxVal);
+    body.append(maxRow);
+
+    // Max time gap
+    const gapRow = el('div', 'ip3-slider-row');
+    gapRow.innerHTML = `<label>Max Aralık (s)</label>`;
+    const gapSlider = document.createElement('input');
+    gapSlider.type = 'range';
+    gapSlider.min = 1; gapSlider.max = 168; gapSlider.step = 1;
+    gapSlider.value = stereoMaxGapHours;
+    const gapVal = el('span', 'ip3-slider-val');
+    gapVal.textContent = `${stereoMaxGapHours}s`;
+    gapSlider.addEventListener('input', () => {
+      stereoMaxGapHours = parseInt(gapSlider.value, 10);
+      gapVal.textContent = `${stereoMaxGapHours}s`;
+    });
+    gapRow.append(gapSlider, gapVal);
+    body.append(gapRow);
+
+    // Find stereo pairs button
+    const btn = el('button', 'ip3-btn');
+    btn.textContent = 'Stereo Çiftleri Bul';
+    btn.style.width = '100%';
+    btn.style.marginTop = '10px';
+    btn.disabled = opportunities.length < 2;
+    btn.addEventListener('click', () => findStereoPairs());
+    body.append(btn);
+
+    if (opportunities.length < 2) {
+      const warn = el('div', 'ip3-empty');
+      warn.style.fontSize = '11px';
+      warn.style.marginTop = '6px';
+      warn.textContent = 'Önce fırsat analizi yapın (en az 2 fırsat gerekli).';
+      body.append(warn);
+    }
+
+    // Results
+    if (stereoPairs.length > 0) {
+      const resWrap = el('div', 'ip3-stereo-results');
+      const resTitle = el('div', 'ip3-stereo-title');
+      resTitle.textContent = `${stereoPairs.length} stereo çift bulundu`;
+      resWrap.append(resTitle);
+
+      for (let i = 0; i < stereoPairs.length; i++) {
+        const p = stereoPairs[i];
+        const card = el('div', 'ip3-stereo-card' + (i === selectedStereoIdx ? ' selected' : ''));
+        card.innerHTML = `
+          <div class="ip3-stereo-row">
+            <span class="ip3-stereo-conv">${p.convergence.toFixed(1)}°</span>
+            <span class="ip3-stereo-gap">Δ${fmtGap(p.gapH)}</span>
+          </div>
+          <div class="ip3-stereo-leg" style="color:${p.a.sat.color};">
+            A · ${fmtDate(p.a.time)} ${fmtTime(p.a.time)} · ${esc(p.a.sat.name)}
+          </div>
+          <div class="ip3-stereo-leg" style="color:${p.b.sat.color};">
+            B · ${fmtDate(p.b.time)} ${fmtTime(p.b.time)} · ${esc(p.b.sat.name)}
+          </div>
+        `;
+        card.addEventListener('click', () => selectStereoPair(i));
+        resWrap.append(card);
+      }
+
+      body.append(resWrap);
+    }
+  });
 }
 
 function buildTargetSection() {
@@ -395,24 +570,6 @@ function buildSettingsSection() {
   rollRow.append(rollSlider, rollVal);
   sec.append(rollRow);
 
-  // Pitch slider (only if preset supports it)
-  if (preset.maxPitchDeg > 0) {
-    const pitchRow = el('div', 'ip3-slider-row');
-    pitchRow.innerHTML = `<label>Pitch ±</label>`;
-    const pitchSlider = document.createElement('input');
-    pitchSlider.type = 'range';
-    pitchSlider.min = 0; pitchSlider.max = preset.maxPitchDeg; pitchSlider.step = 1;
-    pitchSlider.value = pitchDeg;
-    const pitchVal = el('span', 'ip3-slider-val');
-    pitchVal.textContent = `${pitchDeg}°`;
-    pitchSlider.addEventListener('input', () => {
-      pitchDeg = parseInt(pitchSlider.value, 10);
-      pitchVal.textContent = `${pitchDeg}°`;
-    });
-    pitchRow.append(pitchSlider, pitchVal);
-    sec.append(pitchRow);
-  }
-
   return sec;
 }
 
@@ -494,7 +651,9 @@ async function runAnalysis() {
   running = true;
   progress = 0;
   selectedOppIdx = -1;
+  selectedStereoIdx = -1;
   opportunities = [];
+  stereoPairs = [];
   clearOppVisuals();
   renderLeft();
   updateOppStrip();
@@ -635,11 +794,198 @@ function addSel(entity) {
 function selectOpp(idx) {
   if (idx < 0 || idx >= opportunities.length) return;
   selectedOppIdx = idx;
+  selectedStereoIdx = -1;
   const opp = opportunities[idx];
 
   renderOppOnGlobe(opp);
   updateOppStrip();
   animateAroundOpp(opp);
+  renderLeft(); // refresh stereo card selection
+}
+
+// ───────── Stereo planning ─────────
+
+/**
+ * Angle between two viewing directions at the target (the "convergence
+ * angle" of a stereo pair). Larger = more parallax.
+ */
+function convergenceAngleDeg(opp1, opp2) {
+  const tgt = Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 0);
+  const s1 = Cesium.Cartesian3.fromDegrees(opp1.subSatLon, opp1.subSatLat, opp1.altKm * 1000);
+  const s2 = Cesium.Cartesian3.fromDegrees(opp2.subSatLon, opp2.subSatLat, opp2.altKm * 1000);
+  const v1 = Cesium.Cartesian3.subtract(s1, tgt, new Cesium.Cartesian3());
+  const v2 = Cesium.Cartesian3.subtract(s2, tgt, new Cesium.Cartesian3());
+  return Cesium.Cartesian3.angleBetween(v1, v2) * 180 / Math.PI;
+}
+
+function findStereoPairs() {
+  if (opportunities.length < 2) return;
+
+  const pairs = [];
+  for (let i = 0; i < opportunities.length; i++) {
+    for (let j = i + 1; j < opportunities.length; j++) {
+      const a = opportunities[i];
+      const b = opportunities[j];
+      const gapH = Math.abs(b.time.getTime() - a.time.getTime()) / 3600_000;
+      if (gapH > stereoMaxGapHours) continue;
+
+      const conv = convergenceAngleDeg(a, b);
+      if (!isFinite(conv)) continue;
+      if (conv < stereoMinConvergence || conv > stereoMaxConvergence) continue;
+
+      // Score: prefer convergence close to 25° (ideal for stereo), short time gap,
+      // and high combined opportunity scores
+      const convScore = 100 - Math.abs(conv - 25) * 2;
+      const gapScore = 100 * (1 - gapH / stereoMaxGapHours);
+      const oppScore = (a.score + b.score) / 2;
+      const score = convScore * 0.4 + gapScore * 0.2 + oppScore * 0.4;
+
+      pairs.push({ a, b, convergence: conv, gapH, score });
+    }
+  }
+
+  pairs.sort((x, y) => y.score - x.score);
+  stereoPairs = pairs.slice(0, 20); // cap
+  selectedStereoIdx = -1;
+  renderLeft();
+
+  if (stereoPairs.length === 0) {
+    showToast('Uygun stereo çift bulunamadı — açı/zaman aralığını genişletin', 'warning');
+  } else {
+    showToast(`${stereoPairs.length} stereo çift bulundu`, 'success');
+  }
+}
+
+function selectStereoPair(idx) {
+  if (idx < 0 || idx >= stereoPairs.length) return;
+  selectedStereoIdx = idx;
+  selectedOppIdx = -1;
+  const pair = stereoPairs[idx];
+
+  clearSelectionEntities();
+
+  // Draw both opportunities on the globe
+  renderOppOnGlobeAccum(pair.a);
+  renderOppOnGlobeAccum(pair.b);
+
+  // Stereo baseline line between the two satellites
+  const posA = propagateAt(pair.a.sat.satrec, pair.a.time);
+  const posB = propagateAt(pair.b.sat.satrec, pair.b.time);
+  if (posA && posB) {
+    const cartA = Cesium.Cartesian3.fromDegrees(posA.lon, posA.lat, posA.alt * 1000);
+    const cartB = Cesium.Cartesian3.fromDegrees(posB.lon, posB.lat, posB.alt * 1000);
+    addSel({
+      name: 'Stereo taban çizgisi',
+      polyline: {
+        positions: [cartA, cartB],
+        width: 2,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: Cesium.Color.MAGENTA,
+          dashLength: 20,
+        }),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+  }
+
+  // Zoom to show both satellites + the target
+  const centerLat = (pair.a.subSatLat + pair.b.subSatLat + targetLat) / 3;
+  const centerLon = (pair.a.subSatLon + pair.b.subSatLon + targetLon) / 3;
+  const maxAlt = Math.max(pair.a.altKm, pair.b.altKm);
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(centerLon, centerLat - 6, maxAlt * 1000 * 2.5),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-45),
+      roll: 0,
+    },
+    duration: 1.8,
+  });
+
+  updateOppStrip();
+  renderLeft();
+}
+
+/** Like renderOppOnGlobe but additive (doesn't clear previous entities). */
+function renderOppOnGlobeAccum(opp) {
+  drawSelectedPassArc(opp);
+
+  const satPos = propagateAt(opp.sat.satrec, opp.time);
+  if (!satPos) return;
+
+  const altM = satPos.alt * 1000;
+  const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
+  const subSatCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, 0);
+  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
+
+  addSel({
+    position: satCart,
+    point: { pixelSize: 14, color: satColor, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
+    label: {
+      text: `${opp.sat.name}\n${satPos.alt.toFixed(0)} km`,
+      font: 'bold 12px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -26),
+    },
+  });
+
+  // Nadir line
+  addSel({
+    polyline: {
+      positions: [satCart, subSatCart],
+      width: 1,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.CYAN.withAlpha(0.5), dashLength: 12,
+      }),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Footprint
+  const preset = getPreset(presetId);
+  const heading = satHeadingAt(opp.sat.satrec, opp.time);
+  const corners = cornersAroundTarget(
+    targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm
+  );
+  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+  const fpCoords = [];
+  for (const c of corners) fpCoords.push(c[1], c[0]);
+  addSel({
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+      material: satColor.withAlpha(0.22),
+      outline: true,
+      outlineColor: satColor.withAlpha(0.9),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // Sensor cone edges
+  for (let ci = 0; ci < 4; ci++) {
+    addSel({
+      polyline: {
+        positions: [satCart, cornerCarts[ci]],
+        width: 1.5,
+        material: satColor.withAlpha(0.55),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+  }
+
+  // FOV walls
+  for (let ci = 0; ci < 4; ci++) {
+    const next = (ci + 1) % 4;
+    addSel({
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy([satCart, cornerCarts[ci], cornerCarts[next]]),
+        material: satColor.withAlpha(0.07),
+        perPositionHeight: true,
+      },
+    });
+  }
 }
 
 function renderOppOnGlobe(opp) {
@@ -654,7 +1000,6 @@ function renderOppOnGlobe(opp) {
   const altM = satPos.alt * 1000;
   const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
   const subSatCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, 0);
-  const tgtCart = Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 0);
   const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
 
   // ──── 1. Satellite 3D model marker ────
@@ -706,44 +1051,7 @@ function renderOppOnGlobe(opp) {
     },
   });
 
-  // ──── 3. Pointing line (satellite → target) ────
-  // Wide yellow glow underneath + solid bright line on top so the beam
-  // reads cleanly against the globe and other geometry.
-  addSel({
-    name: 'Görüş çizgisi (gölge)',
-    polyline: {
-      positions: [satCart, tgtCart],
-      width: 10,
-      material: Cesium.Color.fromCssColorString('#ffd33d').withAlpha(0.18),
-      arcType: Cesium.ArcType.NONE,
-    },
-  });
-  addSel({
-    name: 'Görüş çizgisi',
-    polyline: {
-      positions: [satCart, tgtCart],
-      width: 3,
-      material: Cesium.Color.fromCssColorString('#ffd33d'),
-      depthFailMaterial: Cesium.Color.fromCssColorString('#ffd33d').withAlpha(0.6),
-      arcType: Cesium.ArcType.NONE,
-    },
-  });
-
-  // Prominent target end-cap (so the beam endpoint is unambiguous)
-  addSel({
-    name: 'Hedef vuruşu',
-    position: tgtCart,
-    point: {
-      pixelSize: 14,
-      color: Cesium.Color.fromCssColorString('#ffd33d'),
-      outlineColor: Cesium.Color.fromCssColorString('#c53030'),
-      outlineWidth: 2,
-      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    },
-  });
-
-  // ──── 4. Footprint + sensor cone (centered on target) ────
+  // ──── 3. Footprint + sensor cone (centered on target) ────
   const preset = getPreset(presetId);
   const heading = satHeadingAt(opp.sat.satrec, opp.time); // radians from north
   const corners = cornersAroundTarget(
@@ -944,6 +1252,12 @@ function fmtDate(d) {
 }
 function fmtTime(d) {
   return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+function fmtGap(hours) {
+  if (hours < 1) return `${Math.round(hours * 60)}dk`;
+  if (hours < 24) return `${hours.toFixed(1)}s`;
+  const days = hours / 24;
+  return `${days.toFixed(1)}g`;
 }
 
 function cesiumColor(cssColor, alpha) {
