@@ -698,16 +698,39 @@ function renderOppOnGlobe(opp) {
   });
 
   // ──── 3. Pointing line (satellite → target) ────
+  // Wide yellow glow underneath + solid bright line on top so the beam
+  // reads cleanly against the globe and other geometry.
+  addSel({
+    name: 'Görüş çizgisi (gölge)',
+    polyline: {
+      positions: [satCart, tgtCart],
+      width: 10,
+      material: Cesium.Color.fromCssColorString('#ffd33d').withAlpha(0.18),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
   addSel({
     name: 'Görüş çizgisi',
     polyline: {
       positions: [satCart, tgtCart],
-      width: 2,
-      material: new Cesium.PolylineDashMaterialProperty({
-        color: Cesium.Color.fromCssColorString('#ffd33d'),
-        dashLength: 16,
-      }),
+      width: 3,
+      material: Cesium.Color.fromCssColorString('#ffd33d'),
+      depthFailMaterial: Cesium.Color.fromCssColorString('#ffd33d').withAlpha(0.6),
       arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Prominent target end-cap (so the beam endpoint is unambiguous)
+  addSel({
+    name: 'Hedef vuruşu',
+    position: tgtCart,
+    point: {
+      pixelSize: 14,
+      color: Cesium.Color.fromCssColorString('#ffd33d'),
+      outlineColor: Cesium.Color.fromCssColorString('#c53030'),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
   });
 
