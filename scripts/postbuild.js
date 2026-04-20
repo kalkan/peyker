@@ -99,6 +99,14 @@ if (existsSync(constellationPath)) {
   console.log('  Copied dist/constellation-src.html → constellation.html');
 }
 
+// Copy animation-src.html → animation.html (at repo root)
+const animationPath = join(dist, 'animation-src.html');
+if (existsSync(animationPath)) {
+  const animationHtml = readFileSync(animationPath, 'utf8');
+  writeFileSync(join(root, 'animation.html'), animationHtml);
+  console.log('  Copied dist/animation-src.html → animation.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

@@ -76,6 +76,7 @@ function init() {
       <div class="ip3-nav">
         <a href="./imaging-planner.html" title="2D Görünüme Dön">2D</a>
         <a href="./gag.html" title="Geniş Alan Görüntüleme">GAG</a>
+        <a href="./animation.html" title="Animasyon ve Kayıt" style="color:#f85149;">🎬 Anim</a>
         <a href="./index.html" title="Ana Sayfa">Ana</a>
       </div>
     </div>

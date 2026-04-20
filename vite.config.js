@@ -20,6 +20,7 @@ export default defineConfig({
         'imaging': resolve(__dirname, 'imaging-src.html'),
         'stations': resolve(__dirname, 'stations-src.html'),
         'constellation': resolve(__dirname, 'constellation-src.html'),
+        'animation': resolve(__dirname, 'animation-src.html'),
       },
     },
   },
