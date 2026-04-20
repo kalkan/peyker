@@ -524,12 +524,20 @@ async function runAnalysis() {
     renderLeft();
     drawTiles();
 
-    // Tüm orbit'leri + şeritleri çiz (hepsi kalıcı, tıklanabilir)
+    // Arka plan: tüm orbit'lerin ince/soluk özeti (tıklanabilir, seçimi bozmaz)
     clearOrbitTrackLayers();
     for (let i = 0; i < passes.length; i++) {
       if (passes[i].track && passes[i].track.length >= 2) {
-        drawOrbitTrack(passes[i].track, i);
-        drawImagingStrip(passes[i], i);
+        drawOrbitTrack(passes[i].track, i, {
+          margin: 0.25,
+          weight: 1.5,
+          opacity: 0.35,
+        });
+        drawImagingStrip(passes[i], i, {
+          margin: 0.25,
+          weight: 1,
+          fillOpacity: 0.08,
+        });
       }
     }
 
@@ -566,8 +574,8 @@ async function findOrbitPasses(sat, days) {
   const endMs = now.getTime() + days * 86400_000;
 
   const bbox = polygonBBox(polygonCoords);
-  // Sıkı filtre: polygon bbox + 2° (yörüngenin geçişi boyunca offset hesaplanacak)
-  const marginDeg = 2;
+  // Polygon bbox + 5° — gerçek yer izi gösterimi için geniş tampon
+  const marginDeg = 5;
   const bboxMinLat = bbox.minLat - marginDeg;
   const bboxMaxLat = bbox.maxLat + marginDeg;
   const bboxMinLon = bbox.minLon - marginDeg;
@@ -756,22 +764,6 @@ function drawOrbitTrack(track, idx, opts) {
   target.push(line);
 }
 
-/**
- * Bir noktadan bir çizgi segmentine olan minimum mesafe (km).
- */
-function pointToSegmentDistKm(pLat, pLon, aLat, aLon, bLat, bLon) {
-  const dx = bLon - aLon;
-  const dy = bLat - aLat;
-  const lenSq = dx * dx + dy * dy;
-
-  if (lenSq === 0) return haversineKm(pLat, pLon, aLat, aLon);
-
-  let t = ((pLon - aLon) * dx + (pLat - aLat) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-
-  return haversineKm(pLat, pLon, aLat + t * dy, aLon + t * dx);
-}
-
 // ───────── Tile generation ─────────
 function tilePolygon(coords, sideKm) {
   const bbox = polygonBBox(coords);
@@ -790,17 +782,6 @@ function tilePolygon(coords, sideKm) {
     }
   }
   return out;
-}
-
-function tilesBBox(tiles) {
-  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
-  for (const t of tiles) {
-    if (t.lat < minLat) minLat = t.lat;
-    if (t.lat > maxLat) maxLat = t.lat;
-    if (t.lon < minLon) minLon = t.lon;
-    if (t.lon > maxLon) maxLon = t.lon;
-  }
-  return { minLat, maxLat, minLon, maxLon };
 }
 
 // ───────── Map visualization ─────────
@@ -877,20 +858,22 @@ function selectPass(idx) {
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
 
   if (pass.track && pass.track.length >= 2) {
+    // Gerçek yer izi — uydunun ROI'ye yaklaşıp uzaklaşması (geniş margin)
     drawOrbitTrack(pass.track, idx, {
       color,
-      weight: 3,
-      opacity: 0.95,
+      weight: 3.5,
+      opacity: 1,
       dashArray: null,
-      margin: 0.4,
+      margin: 3,
       targetLayers: selectedPassLayers,
     });
 
+    // Görüntüleme şeridi — uydunun roll ile çektiği yerdeki alan
     drawImagingStrip(pass, idx, {
       color,
-      weight: 2,
-      fillOpacity: 0.3,
-      margin: 0.4,
+      weight: 2.5,
+      fillOpacity: 0.4,
+      margin: 3,
       targetLayers: selectedPassLayers,
     });
   }
@@ -1069,13 +1052,6 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   const a = Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function normalizeLonDiff(lon1, lon2) {
-  let d = lon1 - lon2;
-  while (d > 180) d -= 360;
-  while (d < -180) d += 360;
-  return d;
 }
 
 function pointInPolygon(pt, poly) {
