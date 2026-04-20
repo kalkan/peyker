@@ -1,21 +1,20 @@
 /**
- * GAG — Geniş Alan Görüntüleme (Wide Area Imaging) Beta
+ * GAG — Geniş Alan Görüntüleme (Wide Area Imaging)
  *
- * User draws a polygon on a Leaflet map, picks a satellite, and the tool
- * finds dates when the satellite's swath can fully cover the polygon
- * with ≤5° roll (nadir-like passes).
+ * User draws a polygon, picks a satellite, and the tool:
+ *  1. Tiles the polygon into frame-sized squares
+ *  2. For each pass in the search horizon, finds which tiles the
+ *     satellite can image with roll ≤ maxRollDeg
+ *  3. Sorts passes chronologically and computes cumulative coverage
+ *  4. Reports the passes needed to finish imaging the whole polygon
  *
- * Algorithm:
- *  1. Propagate satellite for N days at coarse steps.
- *  2. For each pass near the polygon's bounding box, compute the swath
- *     corridor (using computeFootprintRect at each timestep).
- *  3. Check whether the polygon is fully inside the corridor.
- *  4. Report qualifying passes with roll, date/time, and coverage %.
+ * Overlap between passes is fine — the goal is to reach 100% tile
+ * coverage as early as possible.
  */
 
 import './styles/gag.css';
 import { fetchTLE } from './sat/fetch.js';
-import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js';
+import { parseTLE, propagateAt } from './sat/propagate.js';
 import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
 import { getColor } from './sat/presets.js';
 import { sunElevation } from './sat/sun.js';
@@ -25,19 +24,32 @@ import { sunElevation } from './sat/sun.js';
 // ───────── State ─────────
 let map = null;
 let drawnItems = null;
-let drawControl = null;
-let polygon = null;        // L.Polygon or null
-let polygonCoords = null;  // [[lat,lon], ...] or null
-let satellites = [];       // { noradId, name, color, satrec, tle }
+let polygon = null;
+let polygonCoords = null;   // [[lat,lon], ...]
+let satellites = [];
 let selectedSatIdx = 0;
 let presetId = 'custom';
 let maxRollDeg = 5;
 let searchDays = 14;
 let running = false;
 let progress = 0;
-let results = [];          // { time, rollDeg, altKm, sunElev, coverage, swathCoords }
-let selectedResultIdx = -1;
-let resultLayers = [];     // Leaflet layers for the selected result
+let progressLabel = '';
+
+// Results
+let tiles = [];              // [{ id, lat, lon, sizeKm }]
+let passes = [];             // [{ time, altKm, sunElev, coveredTileIds, newTileIds, cumCoverage, satName, satColor, tileMinRoll: Map }]
+let selectedPassIdx = -1;
+let completionInfo = null;   // { totalTiles, coveredTiles, completionTime, passCount }
+
+// Map layers
+let tileLayers = [];         // All tile rectangles (always shown)
+let selectedPassLayers = []; // Extra layers for the selected pass
+
+// Palette for distinguishing passes visually on the map
+const PASS_PALETTE = [
+  '#58a6ff', '#7ee787', '#ff7b72', '#d2a8ff', '#ffa657',
+  '#79c0ff', '#56d364', '#f85149', '#bc8cff', '#f0883e',
+];
 
 // ───────── Init ─────────
 function init() {
@@ -53,8 +65,7 @@ function init() {
         <span class="gag-badge">Beta</span>
       </div>
       <div class="gag-nav">
-        <a href="./imaging-planner.html" title="Görüntüleme Planlayıcı">2D</a>
-        <a href="./imaging-planner-3d.html" title="3D Planlayıcı">3D</a>
+        <a href="./imaging.html" title="Görüntüleme Hub'ı">Hub</a>
         <a href="./index.html" title="Ana Sayfa">Ana</a>
       </div>
     </div>
@@ -78,11 +89,7 @@ function init() {
 }
 
 function initMap() {
-  map = L.map('gagMap', {
-    center: [39, 35],
-    zoom: 6,
-    zoomControl: true,
-  });
+  map = L.map('gagMap', { center: [39, 35], zoom: 6, zoomControl: true });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OSM &copy; CARTO',
@@ -92,7 +99,7 @@ function initMap() {
   drawnItems = new L.FeatureGroup();
   map.addLayer(drawnItems);
 
-  drawControl = new L.Control.Draw({
+  const drawControl = new L.Control.Draw({
     draw: {
       polygon: { shapeOptions: { color: '#58a6ff', weight: 2 } },
       polyline: false,
@@ -107,34 +114,38 @@ function initMap() {
 
   map.on(L.Draw.Event.CREATED, (e) => {
     drawnItems.clearLayers();
-    clearResultLayers();
+    clearAllResultLayers();
     const layer = e.layer;
     drawnItems.addLayer(layer);
     polygon = layer;
     polygonCoords = layer.getLatLngs()[0].map(ll => [ll.lat, ll.lng]);
-    results = [];
-    selectedResultIdx = -1;
+    resetResults();
     renderLeft();
   });
 
   map.on(L.Draw.Event.DELETED, () => {
     polygon = null;
     polygonCoords = null;
-    results = [];
-    selectedResultIdx = -1;
-    clearResultLayers();
+    resetResults();
+    clearAllResultLayers();
     renderLeft();
   });
 
   map.on(L.Draw.Event.EDITED, () => {
     if (polygon) {
       polygonCoords = polygon.getLatLngs()[0].map(ll => [ll.lat, ll.lng]);
-      results = [];
-      selectedResultIdx = -1;
-      clearResultLayers();
+      resetResults();
+      clearAllResultLayers();
       renderLeft();
     }
   });
+}
+
+function resetResults() {
+  tiles = [];
+  passes = [];
+  selectedPassIdx = -1;
+  completionInfo = null;
 }
 
 // ───────── Auto-import satellites ─────────
@@ -219,9 +230,8 @@ function buildPolygonSection() {
       drawnItems.clearLayers();
       polygon = null;
       polygonCoords = null;
-      results = [];
-      selectedResultIdx = -1;
-      clearResultLayers();
+      resetResults();
+      clearAllResultLayers();
       renderLeft();
     });
     sec.append(clearBtn);
@@ -270,7 +280,6 @@ function buildSatSection() {
     empty.textContent = 'Henüz uydu eklenmedi';
     sec.append(empty);
   } else {
-    // Satellite selector
     const sel = el('select', 'gag-select');
     sel.style.marginTop = '8px';
     for (let i = 0; i < satellites.length; i++) {
@@ -280,9 +289,7 @@ function buildSatSection() {
       if (i === selectedSatIdx) o.selected = true;
       sel.append(o);
     }
-    sel.addEventListener('change', () => {
-      selectedSatIdx = parseInt(sel.value, 10);
-    });
+    sel.addEventListener('change', () => { selectedSatIdx = parseInt(sel.value, 10); });
     sec.append(sel);
 
     for (const sat of satellites) {
@@ -310,19 +317,17 @@ function buildSettingsSection() {
   const sec = el('div', 'gag-section');
   sec.innerHTML = '<div class="gag-section-title">Ayarlar</div>';
 
-  // Sensor preset
   const sel = el('select', 'gag-select');
   for (const p of SENSOR_PRESETS) {
     const o = document.createElement('option');
     o.value = p.id;
-    o.textContent = `${p.name} (${p.swathKm} km)`;
+    o.textContent = `${p.name} (${p.swathKm}×${p.frameHeightKm} km)`;
     if (p.id === presetId) o.selected = true;
     sel.append(o);
   }
   sel.addEventListener('change', () => { presetId = sel.value; });
   sec.append(sel);
 
-  // Max roll slider
   const rollRow = el('div', 'gag-slider-row');
   rollRow.innerHTML = `<label>Max Roll</label>`;
   const rollSlider = document.createElement('input');
@@ -338,12 +343,11 @@ function buildSettingsSection() {
   rollRow.append(rollSlider, rollVal);
   sec.append(rollRow);
 
-  // Search days slider
   const dayRow = el('div', 'gag-slider-row');
   dayRow.innerHTML = `<label>Arama Süresi</label>`;
   const daySlider = document.createElement('input');
   daySlider.type = 'range';
-  daySlider.min = 1; daySlider.max = 30; daySlider.step = 1;
+  daySlider.min = 1; daySlider.max = 60; daySlider.step = 1;
   daySlider.value = searchDays;
   const dayVal = el('span', 'gag-slider-val');
   dayVal.textContent = `${searchDays}g`;
@@ -370,7 +374,7 @@ function buildRunSection() {
     const prog = el('div', 'gag-progress');
     prog.innerHTML = `
       <div class="gag-progress-bar"><div class="gag-progress-fill" style="width:${(progress * 100).toFixed(0)}%"></div></div>
-      <div class="gag-progress-text">%${(progress * 100).toFixed(0)} tamamlandı</div>
+      <div class="gag-progress-text">${progressLabel} %${(progress * 100).toFixed(0)}</div>
     `;
     sec.append(prog);
   }
@@ -380,30 +384,50 @@ function buildRunSection() {
 
 function buildResultsSection() {
   const sec = el('div', 'gag-section');
-  if (results.length === 0) return sec;
+  if (passes.length === 0 && !completionInfo) return sec;
+
+  if (completionInfo) {
+    const summary = el('div', 'gag-polygon-info');
+    const pct = (completionInfo.coveredTiles / completionInfo.totalTiles * 100).toFixed(0);
+    const complete = completionInfo.completionTime;
+    summary.innerHTML = `
+      <div><span class="label">Toplam fayans:</span> <span class="value">${completionInfo.totalTiles}</span></div>
+      <div><span class="label">Kapsanan:</span> <span class="value">${completionInfo.coveredTiles} (%${pct})</span></div>
+      <div><span class="label">Gerekli geçiş:</span> <span class="value">${completionInfo.passCount}</span></div>
+      ${complete ? `<div><span class="label">Tamamlanma:</span> <span class="value">${fmtDate(complete)} ${fmtTime(complete)}</span></div>` : ''}
+    `;
+    sec.append(summary);
+  }
+
+  if (passes.length === 0) return sec;
 
   const title = el('div', 'gag-results-title');
-  title.textContent = `${results.length} kapsama fırsatı bulundu`;
+  title.textContent = `${passes.length} geçiş (kümülatif sıralı)`;
   sec.append(title);
 
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    const card = el('div', 'gag-result-card' + (i === selectedResultIdx ? ' selected' : ''));
+  for (let i = 0; i < passes.length; i++) {
+    const p = passes[i];
+    const card = el('div', 'gag-result-card' + (i === selectedPassIdx ? ' selected' : ''));
+    const color = PASS_PALETTE[i % PASS_PALETTE.length];
     card.innerHTML = `
-      <div class="gag-result-date">${fmtDate(r.time)} ${fmtTime(r.time)}</div>
-      <div class="gag-result-meta">
-        <span>Roll ${r.rollDeg.toFixed(1)}°</span>
-        <span>Alt ${r.altKm.toFixed(0)} km</span>
-        <span>Güneş ${r.sunElev.toFixed(0)}°</span>
+      <div class="gag-result-date" style="display:flex;align-items:center;gap:8px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+        ${fmtDate(p.time)} ${fmtTime(p.time)}
       </div>
       <div class="gag-result-meta">
-        <span>Kapsama: %${(r.coverage * 100).toFixed(0)}</span>
+        <span>Roll ${p.minRollDeg.toFixed(1)}–${p.maxRollDeg.toFixed(1)}°</span>
+        <span>Alt ${p.altKm.toFixed(0)} km</span>
+        <span>Güneş ${p.sunElev.toFixed(0)}°</span>
+      </div>
+      <div class="gag-result-meta">
+        <span>Yeni fayans: <b style="color:${color};">${p.newTileIds.length}</b></span>
+        <span>Kümülatif: %${(p.cumCoverage * 100).toFixed(0)}</span>
       </div>
       <div class="gag-result-coverage">
-        <div class="gag-result-coverage-fill" style="width:${(r.coverage * 100).toFixed(0)}%"></div>
+        <div class="gag-result-coverage-fill" style="width:${(p.cumCoverage * 100).toFixed(0)}%"></div>
       </div>
     `;
-    card.addEventListener('click', () => selectResult(i));
+    card.addEventListener('click', () => selectPass(i));
     sec.append(card);
   }
 
@@ -415,236 +439,319 @@ async function runAnalysis() {
   if (!polygonCoords || satellites.length === 0) return;
   running = true;
   progress = 0;
-  results = [];
-  selectedResultIdx = -1;
-  clearResultLayers();
+  progressLabel = 'Hazırlanıyor';
+  resetResults();
+  clearAllResultLayers();
   renderLeft();
 
   const sat = satellites[selectedSatIdx];
   if (!sat) { running = false; renderLeft(); return; }
 
   const preset = getPreset(presetId);
-  const bbox = polygonBBox(polygonCoords);
-  const now = new Date();
-  const endMs = now.getTime() + searchDays * 86400_000;
-  const coarseStepMs = 10_000; // 10s steps
-  const totalSteps = (endMs - now.getTime()) / coarseStepMs;
 
-  const candidatePasses = [];
-  let inWindow = false;
-  let windowBest = null;
+  // 1. Tile the polygon
+  const tileSizeKm = Math.min(preset.swathKm, preset.frameHeightKm);
+  tiles = tilePolygon(polygonCoords, tileSizeKm);
 
-  for (let tMs = now.getTime(); tMs <= endMs; tMs += coarseStepMs) {
-    const t = new Date(tMs);
-    const pos = propagateAt(sat.satrec, t);
-    if (!pos) continue;
-
-    // Quick check: is the sub-sat point within an expanded bbox?
-    const margin = 15; // degrees — generous for off-nadir
-    const nearPoly = pos.lat >= bbox.minLat - margin && pos.lat <= bbox.maxLat + margin &&
-                     pos.lon >= bbox.minLon - margin && pos.lon <= bbox.maxLon + margin;
-
-    if (nearPoly) {
-      // Compute off-nadir to polygon center
-      const cLat = (bbox.minLat + bbox.maxLat) / 2;
-      const cLon = (bbox.minLon + bbox.maxLon) / 2;
-      const dist = haversineKm(pos.lat, pos.lon, cLat, cLon);
-      const offNadir = Math.atan2(dist, pos.alt) * 180 / Math.PI;
-
-      if (offNadir <= maxRollDeg + 10) {
-        if (!inWindow) {
-          inWindow = true;
-          windowBest = { t, pos, offNadir };
-        } else if (offNadir < windowBest.offNadir) {
-          windowBest = { t, pos, offNadir };
-        }
-      } else if (inWindow) {
-        if (windowBest.offNadir <= maxRollDeg + 5) {
-          candidatePasses.push(windowBest);
-        }
-        inWindow = false;
-        windowBest = null;
-      }
-    } else if (inWindow) {
-      if (windowBest.offNadir <= maxRollDeg + 5) {
-        candidatePasses.push(windowBest);
-      }
-      inWindow = false;
-      windowBest = null;
-    }
-
-    // Progress
-    const stepIdx = (tMs - now.getTime()) / coarseStepMs;
-    if (stepIdx % 500 === 0) {
-      progress = stepIdx / totalSteps * 0.6;
-      updateProgress();
-      await yieldToUI();
-    }
+  if (tiles.length === 0) {
+    showToast(`Poligon çok küçük — fayans boyutu ${tileSizeKm} km, bu alana sığmıyor`, 'warning');
+    running = false;
+    renderLeft();
+    return;
   }
 
-  if (inWindow && windowBest && windowBest.offNadir <= maxRollDeg + 5) {
-    candidatePasses.push(windowBest);
+  // Draw tiles on map now (gray, unknown coverage)
+  drawTiles();
+
+  // 2. Find passes with tile coverage
+  progressLabel = 'Geçişler taranıyor';
+  const allPasses = await findPassesWithCoverage(
+    sat, tiles, preset, maxRollDeg, searchDays,
+    (p, label) => { progress = p; if (label) progressLabel = label; updateProgress(); }
+  );
+
+  // 3. Sort chronologically and compute cumulative coverage
+  allPasses.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+  const covered = new Set();
+  passes = [];
+  for (const p of allPasses) {
+    const newIds = p.coveredTileIds.filter(id => !covered.has(id));
+    if (newIds.length === 0) continue; // skip passes that don't add new coverage
+    newIds.forEach(id => covered.add(id));
+    p.newTileIds = newIds;
+    p.cumCoverage = covered.size / tiles.length;
+    p.satName = sat.name;
+    p.satColor = sat.color;
+    passes.push(p);
+    if (covered.size === tiles.length) break;
   }
 
-  // Deduplicate passes within 10 min
-  const dedupPasses = [];
-  for (const p of candidatePasses) {
-    const isDup = dedupPasses.some(
-      d => Math.abs(d.t.getTime() - p.t.getTime()) < 600_000
-    );
-    if (!isDup) dedupPasses.push(p);
-  }
-
-  // Evaluate each pass: compute swath corridor coverage over the polygon
-  for (let pi = 0; pi < dedupPasses.length; pi++) {
-    const pass = dedupPasses[pi];
-    progress = 0.6 + (pi / dedupPasses.length) * 0.4;
-    updateProgress();
-    await yieldToUI();
-
-    const result = evaluatePassCoverage(sat, pass, preset);
-    if (result && result.coverage >= 0.5) {
-      results.push(result);
-    }
-  }
-
-  results.sort((a, b) => b.coverage - a.coverage);
-  if (results.length > 30) results.length = 30;
+  completionInfo = {
+    totalTiles: tiles.length,
+    coveredTiles: covered.size,
+    completionTime: covered.size === tiles.length && passes.length > 0 ? passes[passes.length - 1].time : null,
+    passCount: passes.length,
+  };
 
   running = false;
   progress = 1;
   renderLeft();
 
-  if (results.length === 0) {
+  // Color tiles by which pass covers them first
+  drawTiles();
+
+  if (passes.length === 0) {
     showToast(`${searchDays} gün içinde kapsama bulunamadı — roll açısını artırın`, 'warning');
   } else {
-    showToast(`${results.length} kapsama fırsatı bulundu`, 'success');
-    selectResult(0);
+    const pct = (covered.size / tiles.length * 100).toFixed(0);
+    showToast(`${passes.length} geçişte %${pct} kapsama`, 'success');
+    selectPass(0);
   }
 }
 
-function evaluatePassCoverage(sat, pass, preset) {
-  const windowSec = 120; // ±2 min around closest approach
-  const stepSec = 2;
-  const swathCoords = []; // for visualization: [[lat,lon],...]
-  const leftEdge = [];
-  const rightEdge = [];
+/**
+ * Phase 1: coarse proximity scan to find candidate windows (when sat is
+ *   "near enough" that tiles might be visible).
+ * Phase 2: for each window, refine at fine step and record per-tile
+ *   minimum off-nadir. A tile is "covered by this pass" if its minimum
+ *   off-nadir during the window is ≤ maxRoll.
+ */
+async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgress) {
+  const now = new Date();
+  const endMs = now.getTime() + days * 86400_000;
 
-  // Determine roll sign: which side of the track is the polygon center?
-  const cLat = (polygonBBox(polygonCoords).minLat + polygonBBox(polygonCoords).maxLat) / 2;
-  const cLon = (polygonBBox(polygonCoords).minLon + polygonBBox(polygonCoords).maxLon) / 2;
-  const heading = satHeadingAt(sat.satrec, pass.t);
-  const pos0 = propagateAt(sat.satrec, pass.t);
-  if (!pos0) return null;
+  const bbox = tilesBBox(tiles);
+  const centerLat = (bbox.minLat + bbox.maxLat) / 2;
+  const centerLon = (bbox.minLon + bbox.maxLon) / 2;
 
-  const cosLat = Math.cos(pos0.lat * Math.PI / 180);
-  const dN = (cLat - pos0.lat) * 111.0;
-  const dE = (cLon - pos0.lon) * 111.0 * cosLat;
-  const crossTrack = dE * Math.cos(heading) - dN * Math.sin(heading);
-  const rollSign = crossTrack >= 0 ? 1 : -1;
+  // Phase 1: 30s coarse scan, track windows where sub-sat is within a
+  // generous radius of the polygon center
+  const windows = [];
+  let inWindow = false;
+  let winStart = null;
+  let winEnd = null;
+  let winBestT = null;
+  let winBestOff = Infinity;
 
-  // Compute the off-nadir to center
-  const dist = haversineKm(pos0.lat, pos0.lon, cLat, cLon);
-  const rollDeg = Math.atan2(dist, pos0.alt) * 180 / Math.PI;
-  if (rollDeg > maxRollDeg) return null;
+  const coarseStepMs = 30_000;
+  const MAX_PROX_DEG = 15; // coarse filter — within ~1500 km of center
+  const totalCoarse = (endMs - now.getTime()) / coarseStepMs;
+  let step = 0;
 
-  const signedRoll = rollSign * rollDeg;
+  for (let tMs = now.getTime(); tMs <= endMs; tMs += coarseStepMs) {
+    step++;
+    if (step % 500 === 0) {
+      onProgress(Math.min(0.5, (step / totalCoarse) * 0.5), 'Geçişler taranıyor');
+      await yieldToUI();
+    }
 
-  for (let dt = -windowSec; dt <= windowSec; dt += stepSec) {
-    const t = new Date(pass.t.getTime() + dt * 1000);
-    const pre = propagateAt(sat.satrec, new Date(t.getTime() - 1000));
-    const cur = propagateAt(sat.satrec, t);
-    const post = propagateAt(sat.satrec, new Date(t.getTime() + 1000));
-    if (!pre || !cur || !post) continue;
+    const t = new Date(tMs);
+    const pos = propagateAt(sat.satrec, t);
+    if (!pos) continue;
 
-    const trackPts = [
-      { time: new Date(t.getTime() - 1000), lat: pre.lat, lon: pre.lon, alt: pre.alt },
-      { time: t, lat: cur.lat, lon: cur.lon, alt: cur.alt },
-      { time: new Date(t.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
-    ];
-    const rect = computeFootprintRect(
-      trackPts, 1, preset.swathKm, preset.frameHeightKm, signedRoll, 0
-    );
-    if (!rect || !rect.corners || rect.corners.length < 4) continue;
+    const dLat = Math.abs(pos.lat - centerLat);
+    const dLon = Math.abs(normalizeLonDiff(pos.lon, centerLon));
+    const inRange = dLat <= MAX_PROX_DEG && dLon <= MAX_PROX_DEG;
 
-    leftEdge.push(rect.corners[0]);
-    rightEdge.push(rect.corners[1]);
-  }
+    if (inRange) {
+      // Off-nadir to bbox center
+      const dist = haversineKm(pos.lat, pos.lon, centerLat, centerLon);
+      const offNadir = Math.atan(dist / pos.alt) * 180 / Math.PI;
 
-  if (leftEdge.length < 3) return null;
-
-  // Build corridor polygon
-  const corridor = [];
-  for (const c of leftEdge) corridor.push(c);
-  for (let i = rightEdge.length - 1; i >= 0; i--) corridor.push(rightEdge[i]);
-
-  // Check coverage: what fraction of polygon vertices are inside the corridor?
-  let inside = 0;
-  for (const pt of polygonCoords) {
-    if (pointInPolygon(pt, corridor)) inside++;
-  }
-
-  // Also check a grid of sample points within the polygon's bbox
-  const bbox = polygonBBox(polygonCoords);
-  const gridStep = Math.max(0.02, Math.min(0.2, (bbox.maxLat - bbox.minLat) / 10));
-  let gridTotal = 0;
-  let gridInside = 0;
-  for (let lat = bbox.minLat; lat <= bbox.maxLat; lat += gridStep) {
-    for (let lon = bbox.minLon; lon <= bbox.maxLon; lon += gridStep) {
-      if (!pointInPolygon([lat, lon], polygonCoords)) continue;
-      gridTotal++;
-      if (pointInPolygon([lat, lon], corridor)) gridInside++;
+      if (!inWindow) {
+        inWindow = true;
+        winStart = t;
+        winEnd = t;
+        winBestT = t;
+        winBestOff = offNadir;
+      } else {
+        winEnd = t;
+        if (offNadir < winBestOff) {
+          winBestOff = offNadir;
+          winBestT = t;
+        }
+      }
+    } else if (inWindow) {
+      windows.push({ start: winStart, end: winEnd, bestT: winBestT, bestOff: winBestOff });
+      inWindow = false;
     }
   }
+  if (inWindow) {
+    windows.push({ start: winStart, end: winEnd, bestT: winBestT, bestOff: winBestOff });
+  }
 
-  const coverage = gridTotal > 0 ? gridInside / gridTotal : (inside / polygonCoords.length);
+  // Phase 2: refine each window and record per-tile min off-nadir
+  const result = [];
+  for (let wi = 0; wi < windows.length; wi++) {
+    if (wi % 3 === 0) {
+      onProgress(0.5 + (wi / Math.max(1, windows.length)) * 0.5, 'Fayans kapsamaları hesaplanıyor');
+      await yieldToUI();
+    }
 
-  const sunElev = sunElevation(cLat, cLon, pass.t);
+    const w = windows[wi];
+    const startMs = w.start.getTime() - 60_000;
+    const endMsW = w.end.getTime() + 60_000;
+    const fineStepMs = 2_000;
+    const tileMinRoll = new Map();
 
-  return {
-    time: pass.t,
-    rollDeg,
-    altKm: pos0.alt,
-    sunElev,
-    coverage,
-    corridorCoords: corridor,
-    satName: sat.name,
-    satColor: sat.color,
-  };
+    for (let tMs = startMs; tMs <= endMsW; tMs += fineStepMs) {
+      const t = new Date(tMs);
+      const pos = propagateAt(sat.satrec, t);
+      if (!pos) continue;
+
+      for (const tile of tiles) {
+        const dist = haversineKm(pos.lat, pos.lon, tile.lat, tile.lon);
+        const offNadir = Math.atan(dist / pos.alt) * 180 / Math.PI;
+        if (offNadir <= maxRoll) {
+          const prev = tileMinRoll.get(tile.id);
+          if (prev === undefined || offNadir < prev) tileMinRoll.set(tile.id, offNadir);
+        }
+      }
+    }
+
+    if (tileMinRoll.size === 0) continue;
+
+    const bestPos = propagateAt(sat.satrec, w.bestT);
+    const rolls = [...tileMinRoll.values()];
+    result.push({
+      time: w.bestT,
+      altKm: bestPos ? bestPos.alt : 0,
+      sunElev: sunElevation(centerLat, centerLon, w.bestT),
+      coveredTileIds: [...tileMinRoll.keys()],
+      tileMinRoll,
+      minRollDeg: Math.min(...rolls),
+      maxRollDeg: Math.max(...rolls),
+    });
+  }
+
+  onProgress(1, 'Tamamlandı');
+  return result;
 }
 
-// ───────── Result selection + visualization ─────────
-function selectResult(idx) {
-  if (idx < 0 || idx >= results.length) return;
-  selectedResultIdx = idx;
-  clearResultLayers();
+// ───────── Tile generation ─────────
+function tilePolygon(coords, sideKm) {
+  const bbox = polygonBBox(coords);
+  const centerLat = (bbox.minLat + bbox.maxLat) / 2;
+  const latStep = sideKm / 111.0;
+  const lonStep = sideKm / (111.0 * Math.max(0.01, Math.cos(centerLat * Math.PI / 180)));
 
-  const r = results[idx];
-
-  // Draw corridor on map
-  if (r.corridorCoords && r.corridorCoords.length > 2) {
-    const latLngs = r.corridorCoords.map(c => [c[0], c[1]]);
-    const corridorPoly = L.polygon(latLngs, {
-      color: r.satColor || '#58a6ff',
-      weight: 2,
-      fillColor: r.satColor || '#58a6ff',
-      fillOpacity: 0.15,
-      dashArray: '6 4',
-    });
-    corridorPoly.addTo(map);
-    resultLayers.push(corridorPoly);
-
-    // Fit map to show both polygon and corridor
-    const group = L.featureGroup([corridorPoly, ...drawnItems.getLayers()]);
-    map.fitBounds(group.getBounds().pad(0.2));
+  const out = [];
+  let id = 0;
+  // Offset half a step so tiles are centered within the polygon
+  for (let lat = bbox.minLat + latStep / 2; lat < bbox.maxLat; lat += latStep) {
+    for (let lon = bbox.minLon + lonStep / 2; lon < bbox.maxLon; lon += lonStep) {
+      if (pointInPolygon([lat, lon], coords)) {
+        out.push({ id: id++, lat, lon, latStep, lonStep, sizeKm: sideKm });
+      }
+    }
   }
+  return out;
+}
+
+function tilesBBox(tiles) {
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const t of tiles) {
+    if (t.lat < minLat) minLat = t.lat;
+    if (t.lat > maxLat) maxLat = t.lat;
+    if (t.lon < minLon) minLon = t.lon;
+    if (t.lon > maxLon) maxLon = t.lon;
+  }
+  return { minLat, maxLat, minLon, maxLon };
+}
+
+// ───────── Map visualization ─────────
+function drawTiles() {
+  clearTileLayers();
+  if (tiles.length === 0) return;
+
+  // Which pass first covers each tile?
+  const tileToPassIdx = new Map();
+  for (let i = 0; i < passes.length; i++) {
+    for (const id of passes[i].newTileIds) tileToPassIdx.set(id, i);
+  }
+
+  for (const tile of tiles) {
+    const half_lat = tile.latStep / 2;
+    const half_lon = tile.lonStep / 2;
+    const bounds = [
+      [tile.lat - half_lat, tile.lon - half_lon],
+      [tile.lat + half_lat, tile.lon + half_lon],
+    ];
+    const passIdx = tileToPassIdx.get(tile.id);
+    const covered = passIdx !== undefined;
+    const color = covered ? PASS_PALETTE[passIdx % PASS_PALETTE.length] : '#30363d';
+    const rect = L.rectangle(bounds, {
+      color,
+      weight: 1,
+      fillColor: color,
+      fillOpacity: covered ? 0.25 : 0.08,
+    });
+    rect.addTo(map);
+    tileLayers.push(rect);
+  }
+}
+
+function selectPass(idx) {
+  if (idx < 0 || idx >= passes.length) return;
+  selectedPassIdx = idx;
+  clearSelectedPassLayers();
+
+  const pass = passes[idx];
+  const color = PASS_PALETTE[idx % PASS_PALETTE.length];
+
+  // Highlight this pass's newly-covered tiles
+  for (const tile of tiles) {
+    if (!pass.newTileIds.includes(tile.id)) continue;
+    const half_lat = tile.latStep / 2;
+    const half_lon = tile.lonStep / 2;
+    const bounds = [
+      [tile.lat - half_lat, tile.lon - half_lon],
+      [tile.lat + half_lat, tile.lon + half_lon],
+    ];
+    const rect = L.rectangle(bounds, {
+      color: '#fff',
+      weight: 2,
+      fillColor: color,
+      fillOpacity: 0.55,
+    });
+    rect.addTo(map);
+    selectedPassLayers.push(rect);
+  }
+
+  // Popup with pass info at polygon center
+  const bbox = polygonBBox(polygonCoords);
+  const cLat = (bbox.minLat + bbox.maxLat) / 2;
+  const cLon = (bbox.minLon + bbox.maxLon) / 2;
+  const popup = L.popup({ className: 'gag-pass-popup' })
+    .setLatLng([cLat, cLon])
+    .setContent(`
+      <div style="font-size:12px;font-weight:600;color:${color};">
+        Geçiş ${idx + 1}: ${fmtDate(pass.time)} ${fmtTime(pass.time)}
+      </div>
+      <div style="font-size:11px;color:#c9d1d9;margin-top:2px;">
+        Yeni fayans: ${pass.newTileIds.length} · Kümülatif: %${(pass.cumCoverage * 100).toFixed(0)}
+      </div>
+    `);
+  popup.openOn(map);
+  selectedPassLayers.push(popup);
 
   renderLeft();
 }
 
-function clearResultLayers() {
-  for (const l of resultLayers) map.removeLayer(l);
-  resultLayers.length = 0;
+function clearTileLayers() {
+  for (const l of tileLayers) map.removeLayer(l);
+  tileLayers.length = 0;
+}
+function clearSelectedPassLayers() {
+  for (const l of selectedPassLayers) {
+    try { map.removeLayer(l); } catch { /* popup.close */ }
+  }
+  selectedPassLayers.length = 0;
+}
+function clearAllResultLayers() {
+  clearTileLayers();
+  clearSelectedPassLayers();
 }
 
 // ───────── Helpers ─────────
@@ -683,8 +790,7 @@ function approxPolygonAreaKm2(coords) {
     const dLon = (coords[j][1] - coords[i][1]) * Math.PI / 180;
     area += dLon * (2 + Math.sin(lat1) + Math.sin(lat2));
   }
-  area = Math.abs(area * 6371 * 6371 / 2);
-  return area;
+  return Math.abs(area * 6371 * 6371 / 2);
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -696,16 +802,11 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function satHeadingAt(satrec, t) {
-  const now = propagateAt(satrec, t);
-  const ahead = propagateAt(satrec, new Date(t.getTime() + 1000));
-  if (!now || !ahead) return 0;
-  const phi1 = now.lat * Math.PI / 180;
-  const phi2 = ahead.lat * Math.PI / 180;
-  const dLam = (ahead.lon - now.lon) * Math.PI / 180;
-  const y = Math.sin(dLam) * Math.cos(phi2);
-  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLam);
-  return Math.atan2(y, x);
+function normalizeLonDiff(lon1, lon2) {
+  let d = lon1 - lon2;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
 }
 
 function pointInPolygon(pt, poly) {
@@ -729,7 +830,7 @@ function updateProgress() {
   const fill = document.querySelector('.gag-progress-fill');
   const text = document.querySelector('.gag-progress-text');
   if (fill) fill.style.width = `${(progress * 100).toFixed(0)}%`;
-  if (text) text.textContent = `%${(progress * 100).toFixed(0)} tamamlandı`;
+  if (text) text.textContent = `${progressLabel} %${(progress * 100).toFixed(0)}`;
 }
 
 function showToast(message, type = 'info') {
