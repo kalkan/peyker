@@ -85,8 +85,23 @@ function init() {
   }
 
   initMap();
+  loadDefaultROI();
   renderLeft();
   importMainAppSatellites();
+}
+
+function loadDefaultROI() {
+  const bounds = [[41.33579288499321, 28.516945086834646], [40.917881930509786, 29.759773419087605]];
+  const layer = L.rectangle(bounds, { color: '#58a6ff', weight: 2 });
+  drawnItems.addLayer(layer);
+  polygon = layer;
+  polygonCoords = [
+    [bounds[0][0], bounds[0][1]],
+    [bounds[0][0], bounds[1][1]],
+    [bounds[1][0], bounds[1][1]],
+    [bounds[1][0], bounds[0][1]],
+  ];
+  map.fitBounds(bounds, { padding: [40, 40] });
 }
 
 function initMap() {
