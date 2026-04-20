@@ -476,7 +476,6 @@ async function runAnalysis() {
 
     const covered = new Set();
     passes = [];
-    let orbitDrawIdx = 0;
 
     for (let oi = 0; oi < orbitTracks.length; oi++) {
       if (covered.size >= tiles.length) break;
@@ -494,10 +493,8 @@ async function runAnalysis() {
       result.cumCoverage = covered.size / tiles.length;
       result.satName = sat.name;
       result.satColor = sat.color;
+      result.track = track;
       passes.push(result);
-
-      drawOrbitTrack(track, orbitDrawIdx);
-      orbitDrawIdx++;
     }
 
     completionInfo = {
@@ -511,6 +508,14 @@ async function runAnalysis() {
     progress = 1;
     renderLeft();
     drawTiles();
+
+    // Tüm orbit'leri çiz (genel bakış)
+    clearOrbitTrackLayers();
+    for (let i = 0; i < passes.length; i++) {
+      if (passes[i].track && passes[i].track.length >= 2) {
+        drawOrbitTrack(passes[i].track, i);
+      }
+    }
 
     if (passes.length === 0) {
       showToast(`Kapsama bulunamadı — roll açısını artırın veya süreyi uzatın`, 'warning');
@@ -703,11 +708,9 @@ function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
 
 /**
  * Orbit yer izini haritada polyline olarak çiz.
- * Sadece polygon bbox yakınındaki kısmını çiz (tam yer izi değil).
+ * Sadece polygon bbox yakınındaki kısmını çiz.
  */
-function drawOrbitTrack(track, idx) {
-  const color = PASS_PALETTE[idx % PASS_PALETTE.length];
-  // Polygon bbox'a yakın noktaları filtrele (±0.5° margin)
+function drawOrbitTrack(track, idx, style) {
   const pb = polygonBBox(polygonCoords);
   const m = 0.5;
   const trimmed = track.filter(p =>
@@ -716,12 +719,13 @@ function drawOrbitTrack(track, idx) {
   );
   if (trimmed.length < 2) return;
 
+  const c = (style && style.color) || PASS_PALETTE[idx % PASS_PALETTE.length];
   const latlngs = trimmed.map(p => [p.lat, p.lon]);
   const line = L.polyline(latlngs, {
-    color,
-    weight: 2.5,
-    opacity: 0.7,
-    dashArray: '6,4',
+    color: c,
+    weight: (style && style.weight) || 2.5,
+    opacity: (style && style.opacity) || 0.7,
+    dashArray: style ? style.dashArray : '6,4',
   });
   line.bindTooltip(
     `Geçiş ${idx + 1} · ${fmtDate(trimmed[0].time)} ${fmtTime(trimmed[0].time)}`,
@@ -814,20 +818,19 @@ function selectPass(idx) {
   if (idx < 0 || idx >= passes.length) return;
   selectedPassIdx = idx;
   clearSelectedPassLayers();
-
-  const pass = passes[idx];
-  const color = PASS_PALETTE[idx % PASS_PALETTE.length];
-
-  // Önceki geçişlerde kapsanan karolar (soluk)
-  const prevCovered = new Set();
-  for (let i = 0; i < idx; i++) {
-    for (const id of passes[i].newTileIds) prevCovered.add(id);
-  }
-
-  // Tüm karoları yeniden çiz: gri (henüz kapsanmamış) / soluk (önceden kapsanmış) / parlak (bu geçiş)
+  clearOrbitTrackLayers();
   clearTileLayers();
-  const newSet = new Set(pass.newTileIds);
 
+  const selectedColor = PASS_PALETTE[idx % PASS_PALETTE.length];
+
+  // Her karo hangi geçişe ait? (sadece 0..idx arası)
+  const tileToPass = new Map();
+  for (let i = 0; i <= idx; i++) {
+    for (const id of passes[i].newTileIds) tileToPass.set(id, i);
+  }
+  const currentSet = new Set(passes[idx].newTileIds);
+
+  // ─── Karoları çiz: her geçişin karoları kendi renginde ───
   for (const tile of tiles) {
     const half_lat = tile.latStep / 2;
     const half_lon = tile.lonStep / 2;
@@ -837,14 +840,15 @@ function selectPass(idx) {
     ];
 
     let tileColor, weight, fillOpacity;
-    if (newSet.has(tile.id)) {
-      // Bu geçişte çekilecek — parlak
-      tileColor = color;
+    if (currentSet.has(tile.id)) {
+      // Bu geçişte çekilecek — parlak, kalın kenar
+      tileColor = selectedColor;
       weight = 2.5;
       fillOpacity = 0.55;
-    } else if (prevCovered.has(tile.id)) {
-      // Önceki geçişlerde çekilmiş — soluk yeşil
-      tileColor = '#7ee787';
+    } else if (tileToPass.has(tile.id)) {
+      // Önceki geçişlerde çekilmiş — o geçişin rengi, soluk
+      const pi = tileToPass.get(tile.id);
+      tileColor = PASS_PALETTE[pi % PASS_PALETTE.length];
       weight = 1;
       fillOpacity = 0.2;
     } else {
@@ -855,33 +859,35 @@ function selectPass(idx) {
     }
 
     const rect = L.rectangle(bounds, {
-      color: tileColor,
-      weight,
-      fillColor: tileColor,
-      fillOpacity,
+      color: tileColor, weight, fillColor: tileColor, fillOpacity,
     });
     rect.addTo(map);
     tileLayers.push(rect);
   }
 
-  // Seçili geçişin orbit track'ini vurgula, diğerlerini soldur
-  for (let i = 0; i < orbitTrackLayers.length; i++) {
-    const layer = orbitTrackLayers[i];
-    if (i === idx) {
-      layer.setStyle({ opacity: 1, weight: 3.5, dashArray: null });
-    } else {
-      layer.setStyle({ opacity: 0.25, weight: 1.5, dashArray: '4,6' });
-    }
+  // ─── Orbit track'lerini kümülatif çiz (0..idx) ───
+  for (let i = 0; i <= idx; i++) {
+    const p = passes[i];
+    if (!p.track || p.track.length < 2) continue;
+    const c = PASS_PALETTE[i % PASS_PALETTE.length];
+    const isSelected = i === idx;
+    drawOrbitTrack(p.track, i, {
+      color: c,
+      weight: isSelected ? 3.5 : 2,
+      opacity: isSelected ? 1 : 0.5,
+      dashArray: isSelected ? null : '6,4',
+    });
   }
 
-  // Popup
+  // ─── Popup ───
   const bbox = polygonBBox(polygonCoords);
   const cLat = (bbox.minLat + bbox.maxLat) / 2;
   const cLon = (bbox.minLon + bbox.maxLon) / 2;
+  const pass = passes[idx];
   const popup = L.popup({ className: 'gag-pass-popup' })
     .setLatLng([cLat, cLon])
     .setContent(`
-      <div style="font-size:12px;font-weight:600;color:${color};">
+      <div style="font-size:12px;font-weight:600;color:${selectedColor};">
         Geçiş ${idx + 1}: ${fmtDate(pass.time)} ${fmtTime(pass.time)}
       </div>
       <div style="font-size:11px;color:#c9d1d9;margin-top:2px;">
