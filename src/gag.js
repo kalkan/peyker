@@ -444,79 +444,87 @@ async function runAnalysis() {
   clearAllResultLayers();
   renderLeft();
 
-  const sat = satellites[selectedSatIdx];
-  if (!sat) { running = false; renderLeft(); return; }
+  try {
+    const sat = satellites[selectedSatIdx];
+    if (!sat) { running = false; renderLeft(); return; }
 
-  const preset = getPreset(presetId);
+    const preset = getPreset(presetId);
+    const swathKm = preset.swathKm;
 
-  // 1. Tile the polygon
-  const tileSizeKm = Math.min(preset.swathKm, preset.frameHeightKm);
-  tiles = tilePolygon(polygonCoords, tileSizeKm);
+    // Tile the polygon — use swathKm as tile size
+    tiles = tilePolygon(polygonCoords, swathKm);
 
-  if (tiles.length === 0) {
-    showToast(`Poligon çok küçük — fayans boyutu ${tileSizeKm} km, bu alana sığmıyor`, 'warning');
+    if (tiles.length === 0) {
+      showToast(`Alan çok küçük (şerit: ${swathKm} km)`, 'warning');
+      running = false;
+      renderLeft();
+      return;
+    }
+
+    showToast(`${tiles.length} fayans oluşturuldu, geçişler aranıyor...`, 'info');
+    drawTiles();
+    await yieldToUI();
+
+    // Find passes
+    const allPasses = await findCoveragePasses(sat, tiles, swathKm, maxRollDeg, searchDays);
+
+    // Sort chronologically, compute cumulative coverage
+    allPasses.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+    const covered = new Set();
+    passes = [];
+    for (const p of allPasses) {
+      const newIds = p.coveredTileIds.filter(id => !covered.has(id));
+      if (newIds.length === 0) continue;
+      newIds.forEach(id => covered.add(id));
+      p.newTileIds = newIds;
+      p.cumCoverage = covered.size / tiles.length;
+      p.satName = sat.name;
+      p.satColor = sat.color;
+      passes.push(p);
+      if (covered.size === tiles.length) break;
+    }
+
+    completionInfo = {
+      totalTiles: tiles.length,
+      coveredTiles: covered.size,
+      completionTime: covered.size === tiles.length && passes.length > 0 ? passes[passes.length - 1].time : null,
+      passCount: passes.length,
+    };
+
+    running = false;
+    progress = 1;
+    renderLeft();
+    drawTiles();
+
+    if (passes.length === 0) {
+      showToast(`${searchDays} gün içinde kapsama bulunamadı`, 'warning');
+    } else {
+      const pct = (covered.size / tiles.length * 100).toFixed(0);
+      showToast(`${passes.length} geçişte %${pct} kapsama`, 'success');
+      selectPass(0);
+    }
+  } catch (err) {
+    console.error('GAG analysis error:', err);
+    showToast(`Hata: ${err.message}`, 'error');
     running = false;
     renderLeft();
-    return;
-  }
-
-  // Draw tiles on map now (gray, unknown coverage)
-  drawTiles();
-
-  // 2. Find passes with tile coverage
-  progressLabel = 'Geçişler taranıyor';
-  const allPasses = await findPassesWithCoverage(
-    sat, tiles, preset, maxRollDeg, searchDays,
-    (p, label) => { progress = p; if (label) progressLabel = label; updateProgress(); }
-  );
-
-  // 3. Sort chronologically and compute cumulative coverage
-  allPasses.sort((a, b) => a.time.getTime() - b.time.getTime());
-
-  const covered = new Set();
-  passes = [];
-  for (const p of allPasses) {
-    const newIds = p.coveredTileIds.filter(id => !covered.has(id));
-    if (newIds.length === 0) continue; // skip passes that don't add new coverage
-    newIds.forEach(id => covered.add(id));
-    p.newTileIds = newIds;
-    p.cumCoverage = covered.size / tiles.length;
-    p.satName = sat.name;
-    p.satColor = sat.color;
-    passes.push(p);
-    if (covered.size === tiles.length) break;
-  }
-
-  completionInfo = {
-    totalTiles: tiles.length,
-    coveredTiles: covered.size,
-    completionTime: covered.size === tiles.length && passes.length > 0 ? passes[passes.length - 1].time : null,
-    passCount: passes.length,
-  };
-
-  running = false;
-  progress = 1;
-  renderLeft();
-
-  // Color tiles by which pass covers them first
-  drawTiles();
-
-  if (passes.length === 0) {
-    showToast(`${searchDays} gün içinde kapsama bulunamadı — roll açısını artırın`, 'warning');
-  } else {
-    const pct = (covered.size / tiles.length * 100).toFixed(0);
-    showToast(`${passes.length} geçişte %${pct} kapsama`, 'success');
-    selectPass(0);
   }
 }
 
 /**
- * Single-pass algorithm: coarse scan collects ground track points per pass,
- * then for each pass we check which tiles fall within the satellite's
- * imaging strip (off-nadir ≤ maxRoll). No separate fine phase needed —
- * ground track points at 20s intervals are dense enough for strip coverage.
+ * Strip-based pass finder.
+ *
+ * For each satellite pass near the polygon, the imaging strip is:
+ *   swathKm wide, and can be offset up to alt×tan(maxRoll) from nadir.
+ * So a tile is reachable if its distance to the ground track ≤
+ *   alt×tan(maxRoll) + swathKm/2.
+ *
+ * Algorithm:
+ *   1. Scan at 10s steps, group nearby points into passes
+ *   2. For each pass, check which tiles fall within reach
  */
-async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgress) {
+async function findCoveragePasses(sat, tiles, swathKm, maxRoll, days) {
   const now = new Date();
   const endMs = now.getTime() + days * 86400_000;
 
@@ -524,27 +532,27 @@ async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgr
   const centerLat = (bbox.minLat + bbox.maxLat) / 2;
   const centerLon = (bbox.minLon + bbox.maxLon) / 2;
 
-  // Proximity threshold: polygon extent + max roll reach at ~550 km alt
-  const extentDeg = Math.max(bbox.maxLat - bbox.minLat, bbox.maxLon - bbox.minLon);
-  const rollReachDeg = (550 * Math.tan(maxRoll * Math.PI / 180)) / 111;
-  const PROX_DEG = extentDeg / 2 + rollReachDeg + 2;
+  // Max reachable ground distance: roll offset + half swath
+  // At 550km: tan(5°)*550 + 6 = 48+6 = 54 km → ~0.49°
+  // We add polygon half-extent for the proximity filter
+  const halfExtent = Math.max(bbox.maxLat - bbox.minLat, bbox.maxLon - bbox.minLon) / 2;
+  const reachKm = 600 * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
+  const PROX_DEG = halfExtent + reachKm / 111 + 1;
 
-  // Scan: collect ground track points grouped by pass
-  const allPasses = []; // [[{lat,lon,alt,time}, ...], ...]
-  let currentTrack = [];
+  // Phase 1: collect ground track grouped by pass (10s step)
+  const passGroups = [];
+  let track = [];
   let inPass = false;
-
-  const stepMs = 20_000; // 20s — plenty for strip analysis
-  const totalSteps = Math.ceil((endMs - now.getTime()) / stepMs);
+  const stepMs = 10_000;
+  const totalSteps = (endMs - now.getTime()) / stepMs;
   let step = 0;
-
-  onProgress(0.05, 'Geçişler taranıyor');
-  await yieldToUI();
 
   for (let tMs = now.getTime(); tMs <= endMs; tMs += stepMs) {
     step++;
-    if (step % 150 === 0) {
-      onProgress(0.05 + (step / totalSteps) * 0.45, 'Geçişler taranıyor');
+    if (step % 300 === 0) {
+      progress = step / totalSteps * 0.6;
+      progressLabel = `Taranıyor (${passGroups.length} geçiş)`;
+      updateProgress();
       await yieldToUI();
     }
 
@@ -555,75 +563,83 @@ async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgr
     const dLat = Math.abs(pos.lat - centerLat);
     const dLon = Math.abs(normalizeLonDiff(pos.lon, centerLon));
 
-    if (dLat <= PROX_DEG && dLon <= PROX_DEG) {
-      currentTrack.push({ lat: pos.lat, lon: pos.lon, alt: pos.alt, time: t });
+    if (dLat < PROX_DEG && dLon < PROX_DEG) {
+      track.push({ lat: pos.lat, lon: pos.lon, alt: pos.alt, time: t });
       inPass = true;
     } else if (inPass) {
-      if (currentTrack.length >= 2) allPasses.push(currentTrack);
-      currentTrack = [];
+      if (track.length >= 3) passGroups.push(track);
+      track = [];
       inPass = false;
     }
   }
-  if (inPass && currentTrack.length >= 2) allPasses.push(currentTrack);
+  if (inPass && track.length >= 3) passGroups.push(track);
 
-  // For each pass, determine which tiles the strip covers
+  if (passGroups.length === 0) {
+    showToast(`${days} günde yakın geçiş bulunamadı`, 'warning');
+    return [];
+  }
+
+  showToast(`${passGroups.length} geçiş bulundu, kapsama hesaplanıyor...`, 'info');
+  await yieldToUI();
+
+  // Phase 2: for each pass, check tile coverage using strip model
   const result = [];
 
-  for (let pi = 0; pi < allPasses.length; pi++) {
-    if (pi % 2 === 0) {
-      onProgress(0.5 + (pi / allPasses.length) * 0.48, `Şerit ${pi + 1}/${allPasses.length}`);
-      await yieldToUI();
-    }
+  for (let pi = 0; pi < passGroups.length; pi++) {
+    progress = 0.6 + (pi / passGroups.length) * 0.38;
+    progressLabel = `Şerit ${pi + 1}/${passGroups.length}`;
+    updateProgress();
+    if (pi % 3 === 0) await yieldToUI();
 
-    const track = allPasses[pi];
-    const avgAlt = track.reduce((s, p) => s + p.alt, 0) / track.length;
-    const maxDistKm = avgAlt * Math.tan(maxRoll * Math.PI / 180);
-    const maxDistDegLat = maxDistKm / 111;
-    const maxDistDegLon = maxDistKm / (111 * Math.max(0.1, Math.cos(centerLat * Math.PI / 180)));
+    const pts = passGroups[pi];
+    const avgAlt = pts.reduce((s, p) => s + p.alt, 0) / pts.length;
 
-    const tileMinRoll = new Map();
+    // Max distance for a tile to be within the imaging strip
+    const maxReachKm = avgAlt * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
+    const maxReachDegLat = maxReachKm / 111;
+    const maxReachDegLon = maxReachKm / (111 * Math.max(0.1, Math.cos(centerLat * Math.PI / 180)));
+
+    const tileMinDist = new Map(); // tile.id → min distance in km
 
     for (const tile of tiles) {
-      let minOff = Infinity;
+      let minDist = Infinity;
 
-      for (const pt of track) {
-        // Fast rectangular pre-filter
-        if (Math.abs(tile.lat - pt.lat) > maxDistDegLat) continue;
-        if (Math.abs(normalizeLonDiff(tile.lon, pt.lon)) > maxDistDegLon) continue;
-
-        const dist = haversineKm(pt.lat, pt.lon, tile.lat, tile.lon);
-        const offNadir = Math.atan(dist / pt.alt) * 180 / Math.PI;
-        if (offNadir < minOff) minOff = offNadir;
+      for (const pt of pts) {
+        if (Math.abs(tile.lat - pt.lat) > maxReachDegLat) continue;
+        if (Math.abs(normalizeLonDiff(tile.lon, pt.lon)) > maxReachDegLon) continue;
+        const d = haversineKm(pt.lat, pt.lon, tile.lat, tile.lon);
+        if (d < minDist) minDist = d;
       }
 
-      if (minOff <= maxRoll) {
-        tileMinRoll.set(tile.id, minOff);
+      if (minDist <= maxReachKm) {
+        tileMinDist.set(tile.id, minDist);
       }
     }
 
-    if (tileMinRoll.size === 0) continue;
+    if (tileMinDist.size === 0) continue;
 
-    // Best time = closest approach to center
-    let bestPt = track[0];
-    let bestDist = Infinity;
-    for (const pt of track) {
+    // Best time = closest approach to polygon center
+    let bestPt = pts[0];
+    let bestD = Infinity;
+    for (const pt of pts) {
       const d = haversineKm(pt.lat, pt.lon, centerLat, centerLon);
-      if (d < bestDist) { bestDist = d; bestPt = pt; }
+      if (d < bestD) { bestD = d; bestPt = pt; }
     }
 
-    const rolls = [...tileMinRoll.values()];
+    // Convert distances to equivalent off-nadir for display
+    const rolls = [...tileMinDist.values()].map(d => Math.atan(d / avgAlt) * 180 / Math.PI);
+
     result.push({
       time: bestPt.time,
-      altKm: bestPt.alt,
+      altKm: avgAlt,
       sunElev: sunElevation(centerLat, centerLon, bestPt.time),
-      coveredTileIds: [...tileMinRoll.keys()],
-      tileMinRoll,
+      coveredTileIds: [...tileMinDist.keys()],
+      tileMinRoll: tileMinDist,
       minRollDeg: Math.min(...rolls),
       maxRollDeg: Math.max(...rolls),
     });
   }
 
-  onProgress(1, 'Tamamlandı');
   return result;
 }
 
