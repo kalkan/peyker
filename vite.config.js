@@ -19,6 +19,7 @@ export default defineConfig({
         'gag': resolve(__dirname, 'gag-src.html'),
         'imaging': resolve(__dirname, 'imaging-src.html'),
         'stations': resolve(__dirname, 'stations-src.html'),
+        'constellation': resolve(__dirname, 'constellation-src.html'),
       },
     },
   },

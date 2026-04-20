@@ -91,6 +91,14 @@ if (existsSync(stationsHubPath)) {
   console.log('  Copied dist/stations-src.html → stations.html');
 }
 
+// Copy constellation-src.html → constellation.html (at repo root)
+const constellationPath = join(dist, 'constellation-src.html');
+if (existsSync(constellationPath)) {
+  const constellationHtml = readFileSync(constellationPath, 'utf8');
+  writeFileSync(join(root, 'constellation.html'), constellationHtml);
+  console.log('  Copied dist/constellation-src.html → constellation.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

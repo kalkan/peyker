@@ -51,6 +51,10 @@ export function buildSidebar(sidebar, callbacks) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><circle cx="12" cy="12" r="2"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
         Istasyonlar
       </a>
+      <a href="./constellation.html" target="_blank" class="mobile-link" title="Takim Uydu Yonetimi">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="4" r="2"/><circle cx="20" cy="4" r="2"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="20" r="2"/><line x1="12" y1="9" x2="12" y2="5"/><line x1="12" y1="15" x2="12" y2="19"/><line x1="9" y1="12" x2="5" y2="12"/><line x1="15" y1="12" x2="19" y2="12"/></svg>
+        Takim
+      </a>
       <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Takip
@@ -246,6 +250,12 @@ export function buildRightPanel(panel) {
             <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><circle cx="12" cy="12" r="2"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>
           </svg>
           Istasyonlar
+        </a>
+        <a href="./constellation.html" target="_blank" class="mobile-link" title="Takim Uydu Yonetimi">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><circle cx="4" cy="4" r="2"/><circle cx="20" cy="4" r="2"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="20" r="2"/>
+          </svg>
+          Takim
         </a>
         <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
