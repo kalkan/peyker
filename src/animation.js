@@ -18,6 +18,7 @@
 import './styles/animation.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt } from './sat/propagate.js';
+import { getPreset } from './sat/sensor-presets.js';
 import { getColor } from './sat/presets.js';
 
 /* global Cesium */
@@ -39,7 +40,11 @@ let recordingDownloadUrl = null;
 let recording = false;
 let recordStartMs = 0;
 
-// Capture detection (for scene setup)
+// Focused capture from 3D planner (via URL params)
+let focusedOpp = null;   // { time, satNoradId, rollDeg, presetId }
+let focusedPresetId = 'custom';
+
+// Capture detection (for scene setup when no focused opp)
 const CAPTURE_ROLL_THRESHOLD_DEG = 15;
 
 // ───────── Init ─────────
@@ -75,12 +80,24 @@ function init() {
   }
 
   initCesium();
-  applyUrlParams();
-  importMainAppSatellites();
-  // Default: 30 min window starting now
+  // Default: 30 min window starting now — may be overridden by URL params
   windowStart = new Date();
   windowEnd = new Date(windowStart.getTime() + 30 * 60 * 1000);
+
+  applyUrlParams();
+  // If URL specified a focused opp, ensure sat is loaded and auto-prepare
+  bootstrapFocusedOpp().catch(() => { /* rendered already */ });
+  importMainAppSatellites();
   renderLeft();
+}
+
+async function bootstrapFocusedOpp() {
+  if (!focusedOpp) return;
+  await ensureSatLoaded(focusedOpp.satNoradId);
+  renderLeft();
+  // Auto-prepare the scene + start playback
+  prepareScene();
+  viewer.clock.shouldAnimate = true;
 }
 
 function initCesium() {
@@ -134,7 +151,45 @@ function applyUrlParams() {
         drawTargetPin();
       }
     }
+
+    // Focused opportunity from 3D planner
+    const oppStr = p.get('opp');
+    const satStr = p.get('sat');
+    if (oppStr && satStr) {
+      const oppTime = new Date(oppStr);
+      const satNoradId = parseInt(satStr, 10);
+      if (isFinite(oppTime.getTime()) && Number.isFinite(satNoradId)) {
+        const rollDeg = parseFloat(p.get('roll') || '0');
+        focusedPresetId = p.get('preset') || 'custom';
+        focusedOpp = {
+          time: oppTime,
+          satNoradId,
+          rollDeg: isFinite(rollDeg) ? rollDeg : 0,
+          presetId: focusedPresetId,
+        };
+        // Window: ±2 min around opp, slower playback for detail
+        windowStart = new Date(oppTime.getTime() - 2 * 60 * 1000);
+        windowEnd = new Date(oppTime.getTime() + 2 * 60 * 1000);
+        playbackMultiplier = 10;
+      }
+    }
   } catch { /* ignore */ }
+}
+
+async function ensureSatLoaded(noradId) {
+  if (satellites.find(s => s.noradId === noradId)) return;
+  try {
+    const tle = await fetchTLE(noradId);
+    satellites.push({
+      noradId,
+      name: tle.name,
+      color: getColor(satellites.length),
+      satrec: parseTLE(tle.line1, tle.line2),
+      tle: { line1: tle.line1, line2: tle.line2 },
+    });
+  } catch (err) {
+    showToast(`Uydu yüklenemedi (#${noradId}): ${err.message}`, 'error');
+  }
 }
 
 async function importMainAppSatellites() {
@@ -178,11 +233,36 @@ async function importMainAppSatellites() {
 function renderLeft() {
   const c = document.getElementById('anim-sections');
   c.innerHTML = '';
+  if (focusedOpp) c.append(buildFocusedOppBanner());
   c.append(buildTargetSection());
   c.append(buildSatSection());
   c.append(buildWindowSection());
   c.append(buildPlaybackSection());
   c.append(buildRecordSection());
+}
+
+function buildFocusedOppBanner() {
+  const sec = el('div', 'anim-section');
+  sec.style.background = 'rgba(88,166,255,0.08)';
+  sec.style.borderLeft = '3px solid #58a6ff';
+  const title = el('div', 'anim-section-title');
+  title.textContent = '🎯 3D Planlayıcıdan Gelen Fırsat';
+  title.style.color = '#58a6ff';
+  sec.append(title);
+
+  const info = document.createElement('div');
+  info.style.cssText = 'font-size:12px;color:#c9d1d9;line-height:1.6;';
+  info.innerHTML = `
+    <div>Uydu: <b>#${focusedOpp.satNoradId}</b></div>
+    <div>Çekim anı: <b>${fmtDate(focusedOpp.time)} ${fmtTime(focusedOpp.time)}</b></div>
+    <div>Roll: <b>${focusedOpp.rollDeg.toFixed(1)}°</b></div>
+    <div style="color:#8b949e;margin-top:6px;font-size:11px;">
+      Pencere otomatik olarak çekim anının ±2 dakikasına ayarlandı. Çekim sırasında sensör karesi ve FOV'u gösterilir.
+    </div>
+  `;
+  sec.append(info);
+
+  return sec;
 }
 
 function buildTargetSection() {
@@ -546,6 +626,89 @@ function prepareScene() {
       },
     });
 
+    // Focused capture scenario: render sensor footprint centered on target
+    // with sensor cone + outline, visible for a tight window around the
+    // focused opp time. This mirrors the 3D planner's single-opp view.
+    if (focusedOpp && focusedOpp.satNoradId === sat.noradId && targetLat != null) {
+      const oppT = focusedOpp.time;
+      const focusStart = new Date(oppT.getTime() - 15_000);
+      const focusEnd = new Date(oppT.getTime() + 15_000);
+      // Clamp to window
+      const fsJ = Cesium.JulianDate.fromDate(
+        focusStart < windowStart ? windowStart : focusStart
+      );
+      const feJ = Cesium.JulianDate.fromDate(
+        focusEnd > windowEnd ? windowEnd : focusEnd
+      );
+      const focusAvail = new Cesium.TimeIntervalCollection([
+        new Cesium.TimeInterval({ start: fsJ, stop: feJ }),
+      ]);
+
+      const preset = getPreset(focusedOpp.presetId);
+      const heading = satHeadingAt(sat.satrec, oppT);
+      const corners = cornersAroundTarget(
+        targetLat, targetLon, heading,
+        preset.swathKm, preset.frameHeightKm
+      );
+      const cornerCarts = corners.map(c =>
+        Cesium.Cartesian3.fromDegrees(c[1], c[0], 0)
+      );
+      const fpCoords = [];
+      for (const c of corners) fpCoords.push(c[1], c[0]);
+
+      // Filled ground footprint
+      viewer.entities.add({
+        id: `focus-fp-${sat.noradId}`,
+        availability: focusAvail,
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+          material: satColor.withAlpha(0.35),
+          outline: true,
+          outlineColor: satColor,
+          outlineWidth: 2,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        },
+      });
+
+      // Sensor cone: 4 edges from sat to footprint corners
+      for (let ci = 0; ci < 4; ci++) {
+        viewer.entities.add({
+          id: `focus-edge-${sat.noradId}-${ci}`,
+          availability: focusAvail,
+          polyline: {
+            positions: new Cesium.CallbackProperty(() => {
+              const t = viewer.clock.currentTime;
+              const p = positions.getValue(t);
+              return p ? [p, cornerCarts[ci]] : [cornerCarts[ci], cornerCarts[ci]];
+            }, false),
+            width: 1.5,
+            material: satColor.withAlpha(0.65),
+            arcType: Cesium.ArcType.NONE,
+          },
+        });
+      }
+
+      // FOV wall faces (translucent triangles between sat and adjacent corners)
+      for (let ci = 0; ci < 4; ci++) {
+        const next = (ci + 1) % 4;
+        viewer.entities.add({
+          id: `focus-wall-${sat.noradId}-${ci}`,
+          availability: focusAvail,
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              const t = viewer.clock.currentTime;
+              const p = positions.getValue(t);
+              if (!p) return new Cesium.PolygonHierarchy([]);
+              return new Cesium.PolygonHierarchy([p, cornerCarts[ci], cornerCarts[next]]);
+            }, false),
+            material: satColor.withAlpha(0.08),
+            perPositionHeight: true,
+            outline: false,
+          },
+        });
+      }
+    }
+
     // Capture events: brief ring + line to target during each window
     if (targetLat != null) {
       for (let ci = 0; ci < captureIntervals.length; ci++) {
@@ -693,9 +856,46 @@ function el(tag, cls) {
   return x;
 }
 
+function fmtDate(d) {
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
 function toDatetimeLocal(d) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function satHeadingAt(satrec, t) {
+  const now = propagateAt(satrec, t);
+  const ahead = propagateAt(satrec, new Date(t.getTime() + 1000));
+  if (!now || !ahead) return 0;
+  const phi1 = now.lat * Math.PI / 180;
+  const phi2 = ahead.lat * Math.PI / 180;
+  const dLam = (ahead.lon - now.lon) * Math.PI / 180;
+  const y = Math.sin(dLam) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLam);
+  return Math.atan2(y, x);
+}
+
+function cornersAroundTarget(tgtLat, tgtLon, headingRad, swathKm, frameKm) {
+  const cosLat = Math.cos(tgtLat * Math.PI / 180);
+  const degPerKmLat = 1 / 111.0;
+  const degPerKmLon = 1 / (111.0 * Math.max(cosLat, 0.01));
+  const alongN = Math.cos(headingRad);
+  const alongE = Math.sin(headingRad);
+  const crossN = Math.cos(headingRad + Math.PI / 2);
+  const crossE = Math.sin(headingRad + Math.PI / 2);
+  const a = frameKm / 2;
+  const c = swathKm / 2;
+  const offsets = [[+a, -c], [+a, +c], [-a, +c], [-a, -c]];
+  return offsets.map(([oa, oc]) => {
+    const dN = alongN * oa + crossN * oc;
+    const dE = alongE * oa + crossE * oc;
+    return [tgtLat + dN * degPerKmLat, tgtLon + dE * degPerKmLon];
+  });
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {

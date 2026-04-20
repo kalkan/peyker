@@ -87,7 +87,13 @@ function init() {
   // Viewer container
   const viewerWrap = document.createElement('div');
   viewerWrap.className = 'ip3-viewer';
-  viewerWrap.innerHTML = '<div id="cesiumContainer"></div><div id="ip3-opp-strip" class="ip3-opp-strip"></div>';
+  viewerWrap.innerHTML = `
+    <div id="cesiumContainer"></div>
+    <div id="ip3-opp-strip" class="ip3-opp-strip"></div>
+    <button id="ip3-animate-fab" class="ip3-animate-fab" style="display:none;" title="Seçili fırsatı animasyonda aç">
+      🎬 Animasyonda Aç
+    </button>
+  `;
   app.append(viewerWrap);
 
   if (typeof Cesium === 'undefined') {
@@ -868,7 +874,33 @@ function selectOpp(idx) {
     animateAroundOpp(opp);
   }
   updateOppStrip();
+  updateAnimateFab();
   renderLeft();
+}
+
+function updateAnimateFab() {
+  const fab = document.getElementById('ip3-animate-fab');
+  if (!fab) return;
+  if (selectedOppIdx < 0 || targetLat == null) {
+    fab.style.display = 'none';
+    return;
+  }
+  fab.style.display = '';
+  // Re-bind to the current opp
+  fab.onclick = () => openInAnimation(opportunities[selectedOppIdx]);
+}
+
+function openInAnimation(opp) {
+  if (!opp || targetLat == null) return;
+  const params = new URLSearchParams({
+    target: `${targetLat.toFixed(5)},${targetLon.toFixed(5)}`,
+    sat: String(opp.sat.noradId),
+    opp: opp.time.toISOString(),
+    roll: opp.rollDeg.toFixed(2),
+    preset: presetId,
+  });
+  if (targetName) params.set('name', targetName);
+  window.open(`./animation.html?${params.toString()}`, '_blank');
 }
 
 // ───────── Stereo planning (same-pass, forward/backward pitch) ─────────
