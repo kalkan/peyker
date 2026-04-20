@@ -75,6 +75,22 @@ if (existsSync(gagPath)) {
   console.log('  Copied dist/gag-src.html → gag.html');
 }
 
+// Copy imaging-src.html → imaging.html (at repo root)
+const imagingHubPath = join(dist, 'imaging-src.html');
+if (existsSync(imagingHubPath)) {
+  const imagingHubHtml = readFileSync(imagingHubPath, 'utf8');
+  writeFileSync(join(root, 'imaging.html'), imagingHubHtml);
+  console.log('  Copied dist/imaging-src.html → imaging.html');
+}
+
+// Copy stations-src.html → stations.html (at repo root)
+const stationsHubPath = join(dist, 'stations-src.html');
+if (existsSync(stationsHubPath)) {
+  const stationsHubHtml = readFileSync(stationsHubPath, 'utf8');
+  writeFileSync(join(root, 'stations.html'), stationsHubHtml);
+  console.log('  Copied dist/stations-src.html → stations.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

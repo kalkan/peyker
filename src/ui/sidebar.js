@@ -41,13 +41,24 @@ export function buildSidebar(sidebar, callbacks) {
   header.className = 'sidebar-header';
   header.innerHTML = `
     <h1>Satellite Ground Track Planner</h1>
-    <div class="subtitle">2D orbit visualization &amp; planning tool</div>
-    <div class="right-panel-header-links" style="margin-top:6px;max-width:100%;justify-content:flex-start;">
-      <a href="./imaging-planner.html" target="_blank" class="mobile-link" title="Goruntuleme Planlayici">Goruntuleme</a>
-      <a href="./imaging-planner-3d.html" target="_blank" class="mobile-link" title="3D Planlayici">3D<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;">BETA</span></a>
-      <a href="./gag.html" target="_blank" class="mobile-link" title="Genis Alan Goruntuleme">GAG<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;">BETA</span></a>
-      <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">Takip</a>
-      <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer Istasyonu">GS</a>
+    <div class="subtitle">Pass tracking &amp; orbit visualization</div>
+    <div class="right-panel-header-links" style="margin-top:8px;max-width:100%;justify-content:flex-start;">
+      <a href="./imaging.html" target="_blank" class="mobile-link" title="Goruntuleme Araclari (2D / 3D / GAG)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/></svg>
+        Goruntuleme
+      </a>
+      <a href="./stations.html" target="_blank" class="mobile-link" title="GS ve Anten Araclari">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><circle cx="12" cy="12" r="2"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+        Istasyonlar
+      </a>
+      <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Takip
+      </a>
+      <a href="./mobile.html" target="_blank" class="mobile-link" title="Mobil Gorunum">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/></svg>
+        Mobil
+      </a>
     </div>
   `;
   sidebar.append(header);
@@ -224,45 +235,27 @@ export function buildRightPanel(panel) {
     <div class="right-panel-header-row">
       <h1>Pass Analysis</h1>
       <div class="right-panel-header-links">
+        <a href="./imaging.html" target="_blank" class="mobile-link" title="Goruntuleme (2D / 3D / GAG)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/>
+          </svg>
+          Goruntuleme
+        </a>
+        <a href="./stations.html" target="_blank" class="mobile-link" title="GS / Anten">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><circle cx="12" cy="12" r="2"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>
+          </svg>
+          Istasyonlar
+        </a>
         <a href="./pass-tracker.html" target="_blank" class="mobile-link" title="Gecis Takip">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
           </svg>
           Takip
         </a>
-        <a href="./imaging-planner.html" target="_blank" class="mobile-link" title="Goruntuleme Planlayici">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="12" y1="3" x2="12" y2="7"/>
-          </svg>
-          Goruntuleme
-        </a>
-        <a href="./imaging-planner-3d.html" target="_blank" class="mobile-link" title="Goruntuleme Planlayici 3D (Beta)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-          </svg>
-          3D<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;letter-spacing:0.3px;">BETA</span>
-        </a>
-        <a href="./gag.html" target="_blank" class="mobile-link" title="Genis Alan Goruntuleme (Beta)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
-          </svg>
-          GAG<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;letter-spacing:0.3px;">BETA</span>
-        </a>
-        <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer Istasyonu Planlama">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
-          </svg>
-          GS
-        </a>
-        <a href="./antenna.html" target="_blank" class="mobile-link" title="Anten Takip 3B">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>
-          </svg>
-          Anten
-        </a>
         <a href="./mobile.html" target="_blank" class="mobile-link" title="Mobil görünüm">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12" y2="18"/>
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
           </svg>
           Mobil
         </a>

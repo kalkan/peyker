@@ -1,0 +1,136 @@
+/* hub.css — Shared styles for imaging + stations hub pages */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+}
+
+.hub-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Tab bar ──────────────────────────────────────────── */
+.hub-tabbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 0 14px;
+  flex-shrink: 0;
+  height: 44px;
+}
+
+.hub-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e6edf3;
+  margin-right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hub-title .hub-icon {
+  opacity: 0.8;
+}
+
+.hub-tabs {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+
+.hub-tab {
+  background: transparent;
+  color: #8b949e;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 16px;
+  height: 44px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.hub-tab:hover {
+  color: #c9d1d9;
+  background: rgba(255,255,255,0.02);
+}
+.hub-tab.active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+}
+
+.hub-tab-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(210,153,34,0.2);
+  color: #d29922;
+  border: 1px solid rgba(210,153,34,0.4);
+  padding: 1px 5px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hub-home {
+  font-size: 12px;
+  color: #8b949e;
+  text-decoration: none;
+  padding: 6px 12px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.hub-home:hover {
+  color: #58a6ff;
+  border-color: #58a6ff;
+}
+
+/* ── Iframe stage ──────────────────────────────────────── */
+.hub-stage {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: #0d1117;
+}
+
+.hub-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #0d1117;
+}
+
+.hub-frame.hidden {
+  display: none;
+}
+
+.hub-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b949e;
+  font-size: 14px;
+  pointer-events: none;
+}
