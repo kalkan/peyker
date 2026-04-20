@@ -511,11 +511,10 @@ async function runAnalysis() {
 }
 
 /**
- * Phase 1: coarse proximity scan to find candidate windows (when sat is
- *   "near enough" that tiles might be visible).
- * Phase 2: for each window, refine at fine step and record per-tile
- *   minimum off-nadir. A tile is "covered by this pass" if its minimum
- *   off-nadir during the window is ≤ maxRoll.
+ * Single-pass algorithm: coarse scan collects ground track points per pass,
+ * then for each pass we check which tiles fall within the satellite's
+ * imaging strip (off-nadir ≤ maxRoll). No separate fine phase needed —
+ * ground track points at 20s intervals are dense enough for strip coverage.
  */
 async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgress) {
   const now = new Date();
@@ -525,29 +524,27 @@ async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgr
   const centerLat = (bbox.minLat + bbox.maxLat) / 2;
   const centerLon = (bbox.minLon + bbox.maxLon) / 2;
 
-  // Dynamic proximity threshold: polygon half-diagonal + roll ground reach
-  const halfDiagDeg = Math.sqrt(
-    ((bbox.maxLat - bbox.minLat) / 2) ** 2 +
-    ((bbox.maxLon - bbox.minLon) / 2) ** 2
-  );
-  const PROX_DEG = Math.min(20, halfDiagDeg + maxRoll + 2);
+  // Proximity threshold: polygon extent + max roll reach at ~550 km alt
+  const extentDeg = Math.max(bbox.maxLat - bbox.minLat, bbox.maxLon - bbox.minLon);
+  const rollReachDeg = (550 * Math.tan(maxRoll * Math.PI / 180)) / 111;
+  const PROX_DEG = extentDeg / 2 + rollReachDeg + 2;
 
-  // Phase 1: 30s coarse scan
-  const windows = [];
-  let inWindow = false;
-  let winStart = null;
-  let winEnd = null;
-  let winBestT = null;
-  let winBestOff = Infinity;
+  // Scan: collect ground track points grouped by pass
+  const allPasses = []; // [[{lat,lon,alt,time}, ...], ...]
+  let currentTrack = [];
+  let inPass = false;
 
-  const coarseStepMs = 30_000;
-  const totalCoarse = (endMs - now.getTime()) / coarseStepMs;
+  const stepMs = 20_000; // 20s — plenty for strip analysis
+  const totalSteps = Math.ceil((endMs - now.getTime()) / stepMs);
   let step = 0;
 
-  for (let tMs = now.getTime(); tMs <= endMs; tMs += coarseStepMs) {
+  onProgress(0.05, 'Geçişler taranıyor');
+  await yieldToUI();
+
+  for (let tMs = now.getTime(); tMs <= endMs; tMs += stepMs) {
     step++;
-    if (step % 200 === 0) {
-      onProgress(Math.min(0.5, (step / totalCoarse) * 0.5), 'Geçişler taranıyor');
+    if (step % 150 === 0) {
+      onProgress(0.05 + (step / totalSteps) * 0.45, 'Geçişler taranıyor');
       await yieldToUI();
     }
 
@@ -557,86 +554,68 @@ async function findPassesWithCoverage(sat, tiles, preset, maxRoll, days, onProgr
 
     const dLat = Math.abs(pos.lat - centerLat);
     const dLon = Math.abs(normalizeLonDiff(pos.lon, centerLon));
-    const inRange = dLat <= PROX_DEG && dLon <= PROX_DEG;
 
-    if (inRange) {
-      const dist = haversineKm(pos.lat, pos.lon, centerLat, centerLon);
-      const offNadir = Math.atan(dist / pos.alt) * 180 / Math.PI;
-
-      if (!inWindow) {
-        inWindow = true;
-        winStart = t;
-        winEnd = t;
-        winBestT = t;
-        winBestOff = offNadir;
-      } else {
-        winEnd = t;
-        if (offNadir < winBestOff) {
-          winBestOff = offNadir;
-          winBestT = t;
-        }
-      }
-    } else if (inWindow) {
-      windows.push({ start: winStart, end: winEnd, bestT: winBestT, bestOff: winBestOff });
-      inWindow = false;
+    if (dLat <= PROX_DEG && dLon <= PROX_DEG) {
+      currentTrack.push({ lat: pos.lat, lon: pos.lon, alt: pos.alt, time: t });
+      inPass = true;
+    } else if (inPass) {
+      if (currentTrack.length >= 2) allPasses.push(currentTrack);
+      currentTrack = [];
+      inPass = false;
     }
   }
-  if (inWindow) {
-    windows.push({ start: winStart, end: winEnd, bestT: winBestT, bestOff: winBestOff });
-  }
+  if (inPass && currentTrack.length >= 2) allPasses.push(currentTrack);
 
-  // Phase 2: refine each window
-  // Pre-compute max ground distance for the given roll at typical LEO altitude
-  const typicalAlt = 500;
-  const maxGroundKm = typicalAlt * Math.tan(maxRoll * Math.PI / 180) * 1.3; // 30% margin
-  const maxGroundDeg = maxGroundKm / 111.0 * 1.5; // generous lat/lon pre-filter
-
+  // For each pass, determine which tiles the strip covers
   const result = [];
-  for (let wi = 0; wi < windows.length; wi++) {
-    onProgress(0.5 + (wi / Math.max(1, windows.length)) * 0.5, `Geçiş ${wi + 1}/${windows.length}`);
-    await yieldToUI();
 
-    const w = windows[wi];
-    const startMsW = w.start.getTime() - 30_000;
-    const endMsW = w.end.getTime() + 30_000;
-    const fineStepMs = 3_000;
+  for (let pi = 0; pi < allPasses.length; pi++) {
+    if (pi % 2 === 0) {
+      onProgress(0.5 + (pi / allPasses.length) * 0.48, `Şerit ${pi + 1}/${allPasses.length}`);
+      await yieldToUI();
+    }
+
+    const track = allPasses[pi];
+    const avgAlt = track.reduce((s, p) => s + p.alt, 0) / track.length;
+    const maxDistKm = avgAlt * Math.tan(maxRoll * Math.PI / 180);
+    const maxDistDegLat = maxDistKm / 111;
+    const maxDistDegLon = maxDistKm / (111 * Math.max(0.1, Math.cos(centerLat * Math.PI / 180)));
+
     const tileMinRoll = new Map();
-    let fineStep = 0;
 
-    for (let tMs = startMsW; tMs <= endMsW; tMs += fineStepMs) {
-      fineStep++;
-      if (fineStep % 20 === 0) await yieldToUI();
+    for (const tile of tiles) {
+      let minOff = Infinity;
 
-      const t = new Date(tMs);
-      const pos = propagateAt(sat.satrec, t);
-      if (!pos) continue;
+      for (const pt of track) {
+        // Fast rectangular pre-filter
+        if (Math.abs(tile.lat - pt.lat) > maxDistDegLat) continue;
+        if (Math.abs(normalizeLonDiff(tile.lon, pt.lon)) > maxDistDegLon) continue;
 
-      const actualMaxKm = pos.alt * Math.tan(maxRoll * Math.PI / 180);
-      const latFilter = actualMaxKm / 111.0;
-      const lonFilter = actualMaxKm / (111.0 * Math.max(0.1, Math.cos(pos.lat * Math.PI / 180)));
+        const dist = haversineKm(pt.lat, pt.lon, tile.lat, tile.lon);
+        const offNadir = Math.atan(dist / pt.alt) * 180 / Math.PI;
+        if (offNadir < minOff) minOff = offNadir;
+      }
 
-      for (const tile of tiles) {
-        // Fast lat/lon pre-filter before expensive haversine
-        if (Math.abs(tile.lat - pos.lat) > latFilter) continue;
-        if (Math.abs(normalizeLonDiff(tile.lon, pos.lon)) > lonFilter) continue;
-
-        const dist = haversineKm(pos.lat, pos.lon, tile.lat, tile.lon);
-        const offNadir = Math.atan(dist / pos.alt) * 180 / Math.PI;
-        if (offNadir <= maxRoll) {
-          const prev = tileMinRoll.get(tile.id);
-          if (prev === undefined || offNadir < prev) tileMinRoll.set(tile.id, offNadir);
-        }
+      if (minOff <= maxRoll) {
+        tileMinRoll.set(tile.id, minOff);
       }
     }
 
     if (tileMinRoll.size === 0) continue;
 
-    const bestPos = propagateAt(sat.satrec, w.bestT);
+    // Best time = closest approach to center
+    let bestPt = track[0];
+    let bestDist = Infinity;
+    for (const pt of track) {
+      const d = haversineKm(pt.lat, pt.lon, centerLat, centerLon);
+      if (d < bestDist) { bestDist = d; bestPt = pt; }
+    }
+
     const rolls = [...tileMinRoll.values()];
     result.push({
-      time: w.bestT,
-      altKm: bestPos ? bestPos.alt : 0,
-      sunElev: sunElevation(centerLat, centerLon, w.bestT),
+      time: bestPt.time,
+      altKm: bestPt.alt,
+      sunElev: sunElevation(centerLat, centerLon, bestPt.time),
       coveredTileIds: [...tileMinRoll.keys()],
       tileMinRoll,
       minRollDeg: Math.min(...rolls),
