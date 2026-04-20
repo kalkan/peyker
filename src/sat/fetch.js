@@ -89,12 +89,9 @@ async function fetchWithTimeout(url, ms = 10000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ms);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    return await fetch(url, { signal: controller.signal });
+  } finally {
     clearTimeout(timeout);
-    return response;
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
   }
 }
 

@@ -465,12 +465,21 @@ async function runAnalysis() {
     if (!sat) { running = false; renderLeft(); return; }
 
     const preset = getPreset(presetId);
+    if (!preset || !preset.swathKm || preset.swathKm <= 0) {
+      showToast('Geçersiz sensör ön ayarı', 'error');
+      running = false; renderLeft(); return;
+    }
     const swathKm = preset.swathKm;
 
     // ─── Adım 1: Polygon'u karola ───
     tiles = tilePolygon(polygonCoords, swathKm);
     if (tiles.length === 0) {
       showToast(`Alan çok küçük (şerit: ${swathKm} km)`, 'warning');
+      running = false; renderLeft(); return;
+    }
+    if (tiles.length > 5000) {
+      showToast(`Çok fazla karo (${tiles.length}) — alanı küçültün veya şerit genişliğini artırın`, 'warning');
+      tiles = [];
       running = false; renderLeft(); return;
     }
     drawTiles();
@@ -633,7 +642,8 @@ function assignBestStrip(track, tiles, alreadyCovered, swathKm, maxRoll) {
   if (track.length < 2) return null;
 
   const avgAlt = track.reduce((s, p) => s + p.alt, 0) / track.length;
-  const maxOffsetKm = avgAlt * Math.tan(maxRoll * Math.PI / 180);
+  const safeRoll = Math.min(89, Math.max(0, maxRoll));
+  const maxOffsetKm = avgAlt * Math.tan(safeRoll * Math.PI / 180);
   const halfSwath = swathKm / 2;
 
   // Track yönü (heading) — ilk ve son noktadan hesapla
@@ -734,8 +744,9 @@ function trackHeading(lat1, lon1, lat2, lon2) {
  * Pozitif = track'in sağında.
  */
 function crossTrackDistKm(lat, lon, refLat, refLon, heading) {
+  const cosLat = Math.max(0.01, Math.cos(refLat * Math.PI / 180));
   const dN = (lat - refLat) * 111;
-  const dE = (lon - refLon) * 111 * Math.cos(refLat * Math.PI / 180);
+  const dE = (lon - refLon) * 111 * cosLat;
   return dE * Math.cos(heading) - dN * Math.sin(heading);
 }
 
@@ -743,8 +754,9 @@ function crossTrackDistKm(lat, lon, refLat, refLon, heading) {
  * Along-track mesafesi: noktanın track yönündeki uzaklığı (km).
  */
 function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
+  const cosLat = Math.max(0.01, Math.cos(refLat * Math.PI / 180));
   const dN = (lat - refLat) * 111;
-  const dE = (lon - refLon) * 111 * Math.cos(refLat * Math.PI / 180);
+  const dE = (lon - refLon) * 111 * cosLat;
   return dN * Math.cos(heading) + dE * Math.sin(heading);
 }
 
@@ -961,7 +973,7 @@ function drawImagingStrip(pass, idx, opts) {
   const rightEdge = [];
 
   for (const pt of nearTrack) {
-    const cosLat = Math.cos(pt.lat * Math.PI / 180);
+    const cosLat = Math.max(0.01, Math.cos(pt.lat * Math.PI / 180));
 
     const leftDist = offsetKm - halfSwath;
     leftEdge.push([

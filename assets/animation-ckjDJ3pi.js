@@ -1,4 +1,4 @@
-import"./modulepreload-polyfill-B5Qt9EMX.js";import{f as J,b as W,e as z,a as N}from"./fetch-Dh_3GtDC.js";import{g as ae}from"./sensor-presets-B6v_CTLa.js";let l=null,m=[],f=null,b=null,_=null,D=!1,C=null,I=null,F=60;const ie=[1,10,60,300,900,3600];let P=null,U=[],R=null,H=!1,Y=0,T=null,Z="custom";const oe=15;function Q(){const e=document.getElementById("animation-app");if(!e)return;const a=document.createElement("div");a.className="anim-panel",a.innerHTML=`
+import"./modulepreload-polyfill-B5Qt9EMX.js";import{f as J,b as W,e as z,a as N}from"./fetch-B8wCyjRJ.js";import{g as ae}from"./sensor-presets-B6v_CTLa.js";let l=null,m=[],f=null,b=null,_=null,D=!1,C=null,I=null,F=60;const ie=[1,10,60,300,900,3600];let P=null,U=[],R=null,H=!1,Y=0,T=null,Z="custom";const oe=15;function Q(){const e=document.getElementById("animation-app");if(!e)return;const a=document.createElement("div");a.className="anim-panel",a.innerHTML=`
     <div class="anim-header">
       <div style="display:flex;align-items:center;gap:8px;">
         <h1>Animasyon</h1>

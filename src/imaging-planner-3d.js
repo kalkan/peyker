@@ -516,10 +516,11 @@ async function nominatimSearch(query, results, input) {
       return;
     }
     for (const p of data) {
+      const displayName = p.display_name || p.name || 'Konum';
       const item = el('div', 'ip3-search-item');
-      item.textContent = p.display_name;
+      item.textContent = displayName;
       item.addEventListener('click', () => {
-        setTarget(parseFloat(p.lat), parseFloat(p.lon), p.display_name.split(',')[0]);
+        setTarget(parseFloat(p.lat), parseFloat(p.lon), displayName.split(',')[0]);
         input.value = '';
         results.style.display = 'none';
       });
@@ -1121,9 +1122,10 @@ function renderOppOnGlobe(opp) {
     const sign = rollSignForTarget(opp.sat.satrec, opp.time);
 
     // Roll yönündeki look noktası: nadir'den roll açısıyla sapma (yerde)
-    const rollGroundOffsetKm = satPos.alt * Math.tan(Math.abs(rollRad));
+    const safeRollRad = Math.min(Math.PI / 2 - 0.01, Math.abs(rollRad));
+    const rollGroundOffsetKm = satPos.alt * Math.tan(safeRollRad);
     const lookLat = satPos.lat + (rollGroundOffsetKm * Math.cos(perpAngle) * sign) / 111;
-    const cosLat = Math.cos(satPos.lat * Math.PI / 180);
+    const cosLat = Math.max(0.01, Math.cos(satPos.lat * Math.PI / 180));
     const lookLon = satPos.lon + (rollGroundOffsetKm * Math.sin(perpAngle) * sign) / (111 * cosLat);
     const lookCart = Cesium.Cartesian3.fromDegrees(lookLon, lookLat, 0);
 
@@ -1166,22 +1168,24 @@ function renderOppOnGlobe(opp) {
     });
 
     // Roll açı etiketi
-    const midArc = arcPts[Math.floor(arcPts.length / 2)];
-    addSel({
-      position: midArc,
-      label: {
-        text: `${Math.abs(opp.rollDeg).toFixed(1)}°`,
-        font: 'bold 14px sans-serif',
-        fillColor: Cesium.Color.ORANGE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        pixelOffset: new Cesium.Cartesian2(15, 0),
-        showBackground: true,
-        backgroundColor: new Cesium.Color(0, 0, 0, 0.6),
-        backgroundPadding: new Cesium.Cartesian2(6, 4),
-      },
-    });
+    if (arcPts.length > 0) {
+      const midArc = arcPts[Math.floor(arcPts.length / 2)];
+      addSel({
+        position: midArc,
+        label: {
+          text: `${Math.abs(opp.rollDeg).toFixed(1)}°`,
+          font: 'bold 14px sans-serif',
+          fillColor: Cesium.Color.ORANGE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(15, 0),
+          showBackground: true,
+          backgroundColor: new Cesium.Color(0, 0, 0, 0.6),
+          backgroundPadding: new Cesium.Cartesian2(6, 4),
+        },
+      });
+    }
 
     // Roll yönü üçgeni (yarı saydam dolgu: nadir-sat-look)
     addSel({
