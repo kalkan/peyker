@@ -30,7 +30,7 @@ let satellites = [];
 let selectedSatIdx = 0;
 let presetId = 'custom';
 let maxRollDeg = 5;
-let searchDays = 14;
+let searchDays = 30;
 let running = false;
 let progress = 0;
 let progressLabel = '';
@@ -526,15 +526,16 @@ async function scanOrbitsAndCoverage(sat, tiles, swathKm, maxRoll, days) {
   const endMs = now.getTime() + days * 86400_000;
 
   // Polygon bbox — hızlı pre-filter için
+  // Margin: reachKm + 3° minimum (LEO 7km/s × 15s step = 105km = ~1°, güvenlik payı)
   const bbox = polygonBBox(polygonCoords);
   const reachKm = 600 * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
-  const marginDeg = reachKm / 111 + 0.5;
+  const marginDeg = Math.max(3, reachKm / 111 + 1.5);
   const bboxMinLat = bbox.minLat - marginDeg;
   const bboxMaxLat = bbox.maxLat + marginDeg;
   const bboxMinLon = bbox.minLon - marginDeg;
   const bboxMaxLon = bbox.maxLon + marginDeg;
 
-  const STEP_MS = 30_000;
+  const STEP_MS = 15_000; // 15s — LEO'da ~105km adım, geçişleri kaçırmaz
   const totalSteps = Math.ceil((endMs - now.getTime()) / STEP_MS);
 
   const results = [];
@@ -653,7 +654,7 @@ function processOrbitPass(track, tiles, swathKm, maxRoll, orbitIdx, centerLat, c
   return {
     time: bestPt.time,
     altKm: avgAlt,
-    sunElev: sunElevation(centerLat, centerLon, bestPt.time),
+    sunElev: sunElevation(bestPt.time, centerLat, centerLon),
     coveredTileIds: coveredIds,
     tileMinRoll: distMap,
     minRollDeg: Math.min(...rolls),
