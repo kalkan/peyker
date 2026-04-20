@@ -526,16 +526,16 @@ async function scanOrbitsAndCoverage(sat, tiles, swathKm, maxRoll, days) {
   const endMs = now.getTime() + days * 86400_000;
 
   // Polygon bbox — hızlı pre-filter için
-  // Margin: reachKm + 3° minimum (LEO 7km/s × 15s step = 105km = ~1°, güvenlik payı)
+  // Margin: sadece gerçek ulaşılabilir mesafe + 1 adımlık güvenlik (15s=~1°)
   const bbox = polygonBBox(polygonCoords);
   const reachKm = 600 * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
-  const marginDeg = Math.max(3, reachKm / 111 + 1.5);
+  const marginDeg = reachKm / 111 + 1;
   const bboxMinLat = bbox.minLat - marginDeg;
   const bboxMaxLat = bbox.maxLat + marginDeg;
   const bboxMinLon = bbox.minLon - marginDeg;
   const bboxMaxLon = bbox.maxLon + marginDeg;
 
-  const STEP_MS = 15_000; // 15s — LEO'da ~105km adım, geçişleri kaçırmaz
+  const STEP_MS = 20_000; // 20s — LEO'da ~140km adım, yeterli çözünürlük
   const totalSteps = Math.ceil((endMs - now.getTime()) / STEP_MS);
 
   const results = [];
@@ -666,10 +666,20 @@ function processOrbitPass(track, tiles, swathKm, maxRoll, orbitIdx, centerLat, c
 
 /**
  * Orbit yer izini haritada polyline olarak çiz.
+ * Sadece polygon bbox yakınındaki kısmını çiz (tam yer izi değil).
  */
 function drawOrbitTrack(track, idx) {
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
-  const latlngs = track.map(p => [p.lat, p.lon]);
+  // Polygon bbox'a yakın noktaları filtrele (±0.5° margin)
+  const pb = polygonBBox(polygonCoords);
+  const m = 0.5;
+  const trimmed = track.filter(p =>
+    p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
+    p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
+  );
+  if (trimmed.length < 2) return;
+
+  const latlngs = trimmed.map(p => [p.lat, p.lon]);
   const line = L.polyline(latlngs, {
     color,
     weight: 2.5,
@@ -677,7 +687,7 @@ function drawOrbitTrack(track, idx) {
     dashArray: '6,4',
   });
   line.bindTooltip(
-    `Geçiş ${idx + 1} · ${fmtDate(track[0].time)} ${fmtTime(track[0].time)}`,
+    `Geçiş ${idx + 1} · ${fmtDate(trimmed[0].time)} ${fmtTime(trimmed[0].time)}`,
     { sticky: true, className: 'gag-track-tooltip' }
   );
   line.addTo(map);
@@ -771,26 +781,63 @@ function selectPass(idx) {
   const pass = passes[idx];
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
 
-  // Highlight this pass's newly-covered tiles
+  // Önceki geçişlerde kapsanan karolar (soluk)
+  const prevCovered = new Set();
+  for (let i = 0; i < idx; i++) {
+    for (const id of passes[i].newTileIds) prevCovered.add(id);
+  }
+
+  // Tüm karoları yeniden çiz: gri (henüz kapsanmamış) / soluk (önceden kapsanmış) / parlak (bu geçiş)
+  clearTileLayers();
+  const newSet = new Set(pass.newTileIds);
+
   for (const tile of tiles) {
-    if (!pass.newTileIds.includes(tile.id)) continue;
     const half_lat = tile.latStep / 2;
     const half_lon = tile.lonStep / 2;
     const bounds = [
       [tile.lat - half_lat, tile.lon - half_lon],
       [tile.lat + half_lat, tile.lon + half_lon],
     ];
+
+    let tileColor, weight, fillOpacity;
+    if (newSet.has(tile.id)) {
+      // Bu geçişte çekilecek — parlak
+      tileColor = color;
+      weight = 2.5;
+      fillOpacity = 0.55;
+    } else if (prevCovered.has(tile.id)) {
+      // Önceki geçişlerde çekilmiş — soluk yeşil
+      tileColor = '#7ee787';
+      weight = 1;
+      fillOpacity = 0.2;
+    } else {
+      // Henüz kapsanmamış — gri
+      tileColor = '#30363d';
+      weight = 1;
+      fillOpacity = 0.08;
+    }
+
     const rect = L.rectangle(bounds, {
-      color: '#fff',
-      weight: 2,
-      fillColor: color,
-      fillOpacity: 0.55,
+      color: tileColor,
+      weight,
+      fillColor: tileColor,
+      fillOpacity,
     });
     rect.addTo(map);
-    selectedPassLayers.push(rect);
+    tileLayers.push(rect);
   }
 
-  // Popup with pass info at polygon center
+  // Seçili geçişin orbit track'ini vurgula, diğerlerini soldur
+  for (let i = 0; i < orbitTrackLayers.length; i++) {
+    const layer = orbitTrackLayers[i];
+    if (i === idx) {
+      layer.setStyle({ opacity: 1, weight: 3.5, dashArray: null });
+    } else {
+      layer.setStyle({ opacity: 0.25, weight: 1.5, dashArray: '4,6' });
+    }
+  }
+
+  // Popup
   const bbox = polygonBBox(polygonCoords);
   const cLat = (bbox.minLat + bbox.maxLat) / 2;
   const cLon = (bbox.minLon + bbox.maxLon) / 2;
@@ -801,7 +848,7 @@ function selectPass(idx) {
         Geçiş ${idx + 1}: ${fmtDate(pass.time)} ${fmtTime(pass.time)}
       </div>
       <div style="font-size:11px;color:#c9d1d9;margin-top:2px;">
-        Yeni fayans: ${pass.newTileIds.length} · Kümülatif: %${(pass.cumCoverage * 100).toFixed(0)}
+        Bu geçişte: ${pass.newTileIds.length} karo · Kümülatif: %${(pass.cumCoverage * 100).toFixed(0)}
       </div>
     `);
   popup.openOn(map);
