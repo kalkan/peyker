@@ -524,13 +524,16 @@ async function runAnalysis() {
     renderLeft();
     drawTiles();
 
-    // Tüm orbit'leri çiz (genel bakış)
+    // Tüm orbit'leri + şeritleri çiz (hepsi kalıcı, tıklanabilir)
     clearOrbitTrackLayers();
     for (let i = 0; i < passes.length; i++) {
       if (passes[i].track && passes[i].track.length >= 2) {
         drawOrbitTrack(passes[i].track, i);
+        drawImagingStrip(passes[i], i);
       }
     }
+
+    updateCoverageOverlay();
 
     if (passes.length === 0) {
       showToast(`Kapsama bulunamadı — roll açısını artırın veya süreyi uzatın`, 'warning');
@@ -727,7 +730,7 @@ function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
  */
 function drawOrbitTrack(track, idx, style) {
   const pb = polygonBBox(polygonCoords);
-  const m = 0.5;
+  const m = 0.15;
   const trimmed = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
@@ -746,6 +749,7 @@ function drawOrbitTrack(track, idx, style) {
     `Geçiş ${idx + 1} · ${fmtDate(trimmed[0].time)} ${fmtTime(trimmed[0].time)}`,
     { sticky: true, className: 'gag-track-tooltip' }
   );
+  line.on('click', () => selectPass(idx));
   line.addTo(map);
   orbitTrackLayers.push(line);
 }
@@ -927,9 +931,9 @@ function drawImagingStrip(pass, idx) {
   const sinPerp = Math.sin(perpAngle);
   const cosPerp = Math.cos(perpAngle);
 
-  // Polygon bbox'a yakın noktaları filtrele
+  // Polygon bbox'a yakın noktaları filtrele — sadece alana giriş/çıkış kadar
   const pb = polygonBBox(polygonCoords);
-  const m = 1;
+  const m = 0.15;
   const nearTrack = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
@@ -968,6 +972,7 @@ function drawImagingStrip(pass, idx) {
     fillOpacity: 0.18,
   });
   stripPoly.bindTooltip(`Şerit ${idx + 1} · ${swathKm} km`, { sticky: true });
+  stripPoly.on('click', () => selectPass(idx));
   stripPoly.addTo(map);
   orbitTrackLayers.push(stripPoly);
 }
@@ -990,6 +995,25 @@ function clearAllResultLayers() {
   clearTileLayers();
   clearOrbitTrackLayers();
   clearSelectedPassLayers();
+}
+
+// ───────── Coverage Overlay ─────────
+function updateCoverageOverlay() {
+  let overlay = document.getElementById('gag-coverage-overlay');
+  if (!completionInfo) {
+    if (overlay) overlay.remove();
+    return;
+  }
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'gag-coverage-overlay';
+    overlay.className = 'gag-coverage-overlay';
+    document.querySelector('.gag-map-wrap').append(overlay);
+  }
+  const pct = (completionInfo.coveredTiles / completionInfo.totalTiles * 100).toFixed(0);
+  overlay.innerHTML = `
+    <span class="gag-cov-pct">%${pct}</span> kapsama · ${completionInfo.passCount} geçiş · ${completionInfo.coveredTiles}/${completionInfo.totalTiles} karo
+  `;
 }
 
 // ───────── Helpers ─────────

@@ -333,6 +333,26 @@ body {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Coverage overlay */
+.gag-coverage-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(22, 27, 34, 0.92);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #c9d1d9;
+  z-index: 1000;
+  pointer-events: none;
+}
+.gag-cov-pct {
+  font-size: 16px;
+  font-weight: 700;
+  color: #7ee787;
+}
+
 /* Leaflet dark theme adjustments */
 .leaflet-container {
   background: #0d1117;
