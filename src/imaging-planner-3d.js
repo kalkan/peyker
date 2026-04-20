@@ -1113,6 +1113,87 @@ function renderOppOnGlobe(opp) {
     },
   });
 
+  // ──── 2b. Roll angle visualization ────
+  if (Math.abs(opp.rollDeg) > 0.5) {
+    const rollRad = opp.rollDeg * Math.PI / 180;
+    const heading = satHeadingAt(opp.sat.satrec, opp.time);
+    const perpAngle = heading + Math.PI / 2;
+    const sign = rollSignForTarget(opp.sat.satrec, opp.time);
+
+    // Roll yönündeki look noktası: nadir'den roll açısıyla sapma (yerde)
+    const rollGroundOffsetKm = satPos.alt * Math.tan(Math.abs(rollRad));
+    const lookLat = satPos.lat + (rollGroundOffsetKm * Math.cos(perpAngle) * sign) / 111;
+    const cosLat = Math.cos(satPos.lat * Math.PI / 180);
+    const lookLon = satPos.lon + (rollGroundOffsetKm * Math.sin(perpAngle) * sign) / (111 * cosLat);
+    const lookCart = Cesium.Cartesian3.fromDegrees(lookLon, lookLat, 0);
+
+    // Roll açı çizgisi: uydudan look noktasına (turuncu, kalın)
+    addSel({
+      name: `Roll ${opp.rollDeg.toFixed(1)}°`,
+      polyline: {
+        positions: [satCart, lookCart],
+        width: 3,
+        material: Cesium.Color.ORANGE.withAlpha(0.8),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    // Roll açı yayı: nadir ile roll çizgisi arasında küçük yay
+    const arcSteps = 12;
+    const arcRadius = altM * 0.15;
+    const nadirDir = Cesium.Cartesian3.subtract(subSatCart, satCart, new Cesium.Cartesian3());
+    Cesium.Cartesian3.normalize(nadirDir, nadirDir);
+    const lookDir = Cesium.Cartesian3.subtract(lookCart, satCart, new Cesium.Cartesian3());
+    Cesium.Cartesian3.normalize(lookDir, lookDir);
+
+    const arcPts = [];
+    for (let s = 0; s <= arcSteps; s++) {
+      const t = s / arcSteps;
+      const interp = new Cesium.Cartesian3();
+      Cesium.Cartesian3.lerp(nadirDir, lookDir, t, interp);
+      Cesium.Cartesian3.normalize(interp, interp);
+      Cesium.Cartesian3.multiplyByScalar(interp, arcRadius, interp);
+      Cesium.Cartesian3.add(satCart, interp, interp);
+      arcPts.push(interp.clone());
+    }
+    addSel({
+      polyline: {
+        positions: arcPts,
+        width: 2.5,
+        material: Cesium.Color.ORANGE.withAlpha(0.9),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    // Roll açı etiketi
+    const midArc = arcPts[Math.floor(arcPts.length / 2)];
+    addSel({
+      position: midArc,
+      label: {
+        text: `${Math.abs(opp.rollDeg).toFixed(1)}°`,
+        font: 'bold 14px sans-serif',
+        fillColor: Cesium.Color.ORANGE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(15, 0),
+        showBackground: true,
+        backgroundColor: new Cesium.Color(0, 0, 0, 0.6),
+        backgroundPadding: new Cesium.Cartesian2(6, 4),
+      },
+    });
+
+    // Roll yönü üçgeni (yarı saydam dolgu: nadir-sat-look)
+    addSel({
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy([satCart, subSatCart, lookCart]),
+        material: Cesium.Color.ORANGE.withAlpha(0.1),
+        outline: false,
+        perPositionHeight: true,
+      },
+    });
+  }
+
   // ──── 3. Footprint + sensor cone (centered on target) ────
   const preset = getPreset(presetId);
   const heading = satHeadingAt(opp.sat.satrec, opp.time); // radians from north
@@ -1290,9 +1371,10 @@ function updateOppStrip() {
       <div class="ip3-opp-time">${fmtTime(o.time)}</div>
       <div class="ip3-opp-date">${fmtDate(o.time)}</div>
       <div class="ip3-opp-stars">${stars}</div>
+      <div class="ip3-opp-roll">Roll <b>${o.rollDeg.toFixed(1)}°</b></div>
       <div class="ip3-opp-meta">
-        <span>Roll ${o.rollDeg.toFixed(1)}°</span>
         <span>Güneş ${o.sunElevation.toFixed(0)}°</span>
+        <span>Alt ${o.altKm ? o.altKm.toFixed(0) + ' km' : ''}</span>
       </div>
       <div class="ip3-opp-sat" style="color:${o.sat.color};">● ${esc(o.sat.name)}</div>
     `;
