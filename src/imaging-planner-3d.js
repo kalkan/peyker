@@ -43,11 +43,16 @@ let progress = 0;
 const sectionOpen = {
   pitch: false,
   stereo: false,
+  strip: false,
 };
 
 // Stereo planning state (same-pass stereo via forward/backward pitch)
 let stereoBH = 1.2;
 let stereoActive = false;
+
+// Strip capture state
+let stripDurationSec = 10;
+let stripActive = false;
 
 // Cesium entities we manage
 let targetEntity = null;
@@ -70,6 +75,7 @@ function init() {
       </div>
       <div class="ip3-nav">
         <a href="./imaging-planner.html" title="2D Görünüme Dön">2D</a>
+        <a href="./gag.html" title="Geniş Alan Görüntüleme">GAG</a>
         <a href="./index.html" title="Ana Sayfa">Ana</a>
       </div>
     </div>
@@ -206,6 +212,7 @@ function renderLeft() {
   c.append(buildSatSection());
   c.append(buildSettingsSection());
   c.append(buildPitchSection());
+  c.append(buildStripSection());
   c.append(buildStereoSection());
   c.append(buildRunSection());
 }
@@ -262,6 +269,79 @@ function buildPitchSection() {
     });
     row.append(slider, val);
     body.append(row);
+  });
+}
+
+function buildStripSection() {
+  return buildCollapsible('strip', '📐 Şerit Çekim', false, (body) => {
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = 'Belirlenen süre boyunca sürekli çekim yaparak oluşan şerit alanını gösterir.';
+    body.append(info);
+
+    const durRow = el('div', 'ip3-slider-row');
+    durRow.innerHTML = `<label>Süre</label>`;
+    const durSlider = document.createElement('input');
+    durSlider.type = 'range';
+    durSlider.min = 1; durSlider.max = 60; durSlider.step = 1;
+    durSlider.value = stripDurationSec;
+    const durVal = el('span', 'ip3-slider-val');
+    durVal.textContent = `${stripDurationSec}s`;
+    durSlider.addEventListener('input', () => {
+      stripDurationSec = parseInt(durSlider.value, 10);
+      durVal.textContent = `${stripDurationSec}s`;
+      if (stripActive && selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+    });
+    durRow.append(durSlider, durVal);
+    body.append(durRow);
+
+    const btn = el('button', stripActive ? 'ip3-btn-danger' : 'ip3-btn');
+    btn.textContent = stripActive ? 'Şerit Kapat' : 'Şerit Göster';
+    btn.style.width = '100%';
+    btn.style.marginTop = '8px';
+    btn.disabled = selectedOppIdx < 0;
+    btn.addEventListener('click', () => {
+      stripActive = !stripActive;
+      if (selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+      renderLeft();
+    });
+    body.append(btn);
+
+    if (selectedOppIdx < 0) {
+      const warn = el('div', 'ip3-empty');
+      warn.style.fontSize = '11px';
+      warn.style.marginTop = '6px';
+      warn.textContent = 'Önce bir fırsat seçin.';
+      body.append(warn);
+    }
+
+    if (stripActive && selectedOppIdx >= 0) {
+      const opp = opportunities[selectedOppIdx];
+      const altKm = opp.altKm;
+      const rKm = 6371 + altKm;
+      const vKms = Math.sqrt(398600 / rKm);
+      const groundSpeedKms = vKms * 6371 / rKm;
+      const stripLengthKm = groundSpeedKms * stripDurationSec;
+      const preset = getPreset(presetId);
+
+      const resWrap = el('div', 'ip3-stereo-results');
+      const resTitle = el('div', 'ip3-stereo-title');
+      resTitle.textContent = 'ŞERİT BİLGİSİ';
+      resWrap.append(resTitle);
+
+      const card = el('div', 'ip3-stereo-card selected');
+      card.style.cursor = 'default';
+      card.innerHTML = `
+        <div class="ip3-stereo-leg">Süre: ${stripDurationSec} saniye</div>
+        <div class="ip3-stereo-leg">Uzunluk: ~${stripLengthKm.toFixed(1)} km</div>
+        <div class="ip3-stereo-leg">Genişlik: ${preset.swathKm} km</div>
+        <div class="ip3-stereo-leg">Alan: ~${(stripLengthKm * preset.swathKm).toFixed(0)} km²</div>
+      `;
+      resWrap.append(card);
+      body.append(resWrap);
+    }
   });
 }
 
@@ -1050,20 +1130,37 @@ function renderOppOnGlobe(opp) {
     });
   }
 
-  // ──── 5. Ground swath strip (±5 min around opp time) ────
-  drawSwathStrip(opp);
+  // ──── 5. Ground swath strip ────
+  if (stripActive) {
+    drawSwathStrip(opp, stripDurationSec, true);
+  } else {
+    drawSwathStrip(opp, 600, false);
+  }
 }
 
-function drawSwathStrip(opp) {
+function rollSignForTarget(satrec, t) {
+  const pos = propagateAt(satrec, t);
+  if (!pos) return 1;
+  const heading = satHeadingAt(satrec, t);
+  const cosLat = Math.cos(pos.lat * Math.PI / 180);
+  const dN = (targetLat - pos.lat) * 111.0;
+  const dE = (targetLon - pos.lon) * 111.0 * cosLat;
+  const crossTrack = dE * Math.cos(heading) - dN * Math.sin(heading);
+  return crossTrack >= 0 ? 1 : -1;
+}
+
+function drawSwathStrip(opp, totalSec, highlight) {
   const preset = getPreset(presetId);
-  const halfWindowMs = 5 * 60 * 1000;
-  const stepMs = 10_000;
+  const halfMs = (totalSec / 2) * 1000;
+  const steps = Math.max(20, Math.ceil(totalSec / 5));
+  const stepMs = (totalSec * 1000) / steps;
   const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
+  const signedRoll = rollSignForTarget(opp.sat.satrec, opp.time) * Math.abs(opp.rollDeg);
 
   const leftEdge = [];
   const rightEdge = [];
 
-  for (let dt = -halfWindowMs; dt <= halfWindowMs; dt += stepMs) {
+  for (let dt = -halfMs; dt <= halfMs; dt += stepMs) {
     const t = new Date(opp.time.getTime() + dt);
     const pre = propagateAt(opp.sat.satrec, new Date(t.getTime() - 1000));
     const cur = propagateAt(opp.sat.satrec, t);
@@ -1076,38 +1173,35 @@ function drawSwathStrip(opp) {
       { time: new Date(t.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
     ];
     const rect = computeFootprintRect(
-      trackPts, 1, preset.swathKm, preset.frameHeightKm, opp.rollDeg, 0
+      trackPts, 1, preset.swathKm, preset.frameHeightKm, signedRoll, 0
     );
     if (!rect || !rect.corners || rect.corners.length < 4) continue;
 
-    // corners: [tl, tr, br, bl] — left edge = [tl, bl], right edge = [tr, br]
     leftEdge.push(rect.corners[0]);
-    leftEdge.push(rect.corners[3]);
     rightEdge.push(rect.corners[1]);
-    rightEdge.push(rect.corners[2]);
   }
 
-  if (leftEdge.length < 4) return;
+  if (leftEdge.length < 2) return;
 
-  // Build a closed polygon from left edge forward + right edge reversed
   const stripCoords = [];
-  const uniqueLeft = leftEdge.filter((_, i) => i % 2 === 0); // take tl only
-  const uniqueRight = rightEdge.filter((_, i) => i % 2 === 0); // take tr only
-
-  for (const c of uniqueLeft) stripCoords.push(c[1], c[0]);
-  for (let i = uniqueRight.length - 1; i >= 0; i--) {
-    stripCoords.push(uniqueRight[i][1], uniqueRight[i][0]);
+  for (const c of leftEdge) stripCoords.push(c[1], c[0]);
+  for (let i = rightEdge.length - 1; i >= 0; i--) {
+    stripCoords.push(rightEdge[i][1], rightEdge[i][0]);
   }
 
   if (stripCoords.length < 6) return;
+
+  const alpha = highlight ? 0.25 : 0.1;
+  const outAlpha = highlight ? 0.7 : 0.4;
+  const color = highlight ? Cesium.Color.YELLOW : satColor;
 
   addSel({
     name: 'Tarama şeridi',
     polygon: {
       hierarchy: Cesium.Cartesian3.fromDegreesArray(stripCoords),
-      material: satColor.withAlpha(0.1),
+      material: color.withAlpha(alpha),
       outline: true,
-      outlineColor: satColor.withAlpha(0.4),
+      outlineColor: color.withAlpha(outAlpha),
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
