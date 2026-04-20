@@ -553,6 +553,10 @@ function buildHeader() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         3D <span style="background:rgba(210,153,34,0.25);font-size:8px;padding:1px 4px;border-radius:4px;font-weight:700;letter-spacing:0.3px;">BETA</span>
       </a>
+      <a href="./gag.html" class="ip-back-link" title="Genis Alan Goruntuleme" style="border-color:rgba(210,153,34,0.35);color:#d29922;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        GAG <span style="background:rgba(210,153,34,0.25);font-size:8px;padding:1px 4px;border-radius:4px;font-weight:700;letter-spacing:0.3px;">BETA</span>
+      </a>
       <a href="./index.html" class="ip-back-link">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         Ana Sayfa

@@ -16,6 +16,7 @@ export default defineConfig({
         'imaging-planner': resolve(__dirname, 'imaging-planner-src.html'),
         'imaging-planner-3d': resolve(__dirname, 'imaging-planner-3d-src.html'),
         'pass-tracker': resolve(__dirname, 'pass-tracker-src.html'),
+        'gag': resolve(__dirname, 'gag-src.html'),
       },
     },
   },

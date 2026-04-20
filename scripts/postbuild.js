@@ -67,6 +67,14 @@ if (existsSync(passTrackerPath)) {
   console.log('  Copied dist/pass-tracker-src.html → pass-tracker.html');
 }
 
+// Copy gag-src.html → gag.html (at repo root)
+const gagPath = join(dist, 'gag-src.html');
+if (existsSync(gagPath)) {
+  const gagHtml = readFileSync(gagPath, 'utf8');
+  writeFileSync(join(root, 'gag.html'), gagHtml);
+  console.log('  Copied dist/gag-src.html → gag.html');
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');

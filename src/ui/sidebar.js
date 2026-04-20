@@ -235,6 +235,12 @@ export function buildRightPanel(panel) {
           </svg>
           3D<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;letter-spacing:0.3px;">BETA</span>
         </a>
+        <a href="./gag.html" target="_blank" class="mobile-link" title="Genis Alan Goruntuleme (Beta)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+          </svg>
+          GAG<span style="background:rgba(210,153,34,0.25);color:#d29922;font-size:8px;padding:1px 4px;border-radius:4px;margin-left:3px;font-weight:700;letter-spacing:0.3px;">BETA</span>
+        </a>
         <a href="./gs-planner.html" target="_blank" class="mobile-link" title="Yer Istasyonu Planlama">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
