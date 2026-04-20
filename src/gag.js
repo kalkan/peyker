@@ -451,24 +451,31 @@ async function runAnalysis() {
     const preset = getPreset(presetId);
     const swathKm = preset.swathKm;
 
-    // Tile the polygon — use swathKm as tile size
+    // ─── Adım 1: Polygon'u karola ───
     tiles = tilePolygon(polygonCoords, swathKm);
-
     if (tiles.length === 0) {
       showToast(`Alan çok küçük (şerit: ${swathKm} km)`, 'warning');
-      running = false;
-      renderLeft();
-      return;
+      running = false; renderLeft(); return;
     }
-
-    showToast(`${tiles.length} fayans oluşturuldu, geçişler aranıyor...`, 'info');
     drawTiles();
+    setProgress(0.05, `${tiles.length} karo oluşturuldu`);
     await yieldToUI();
 
-    // Find passes
-    const allPasses = await findCoveragePasses(sat, tiles, swathKm, maxRollDeg, searchDays);
+    // ─── Adım 2: Verilen sürede ROI'yi kesen orbit'leri bul ───
+    const orbitTracks = await findOrbitsIntersectingROI(sat, maxRollDeg, swathKm, searchDays);
+    if (orbitTracks.length === 0) {
+      showToast(`${searchDays} gün içinde ROI'yi kesen orbit bulunamadı`, 'warning');
+      running = false; renderLeft(); return;
+    }
+    setProgress(0.55, `${orbitTracks.length} orbit ROI'yi kesiyor`);
+    await yieldToUI();
 
-    // Sort chronologically, compute cumulative coverage
+    // ─── Adım 3: Orbit şeritleri ile karolar arasındaki ilişkiyi kur ───
+    const allPasses = computeStripTileCoverage(orbitTracks, tiles, swathKm, maxRollDeg);
+    setProgress(0.9, `${allPasses.length} geçişte kapsama hesaplandı`);
+    await yieldToUI();
+
+    // ─── Sırala ve kümülatif kapsama hesapla ───
     allPasses.sort((a, b) => a.time.getTime() - b.time.getTime());
 
     const covered = new Set();
@@ -498,7 +505,7 @@ async function runAnalysis() {
     drawTiles();
 
     if (passes.length === 0) {
-      showToast(`${searchDays} gün içinde kapsama bulunamadı`, 'warning');
+      showToast(`Kapsama bulunamadı — roll açısını artırın`, 'warning');
     } else {
       const pct = (covered.size / tiles.length * 100).toFixed(0);
       showToast(`${passes.length} geçişte %${pct} kapsama`, 'success');
@@ -512,135 +519,187 @@ async function runAnalysis() {
   }
 }
 
+function setProgress(val, label) {
+  progress = val;
+  progressLabel = label;
+  updateProgress();
+}
+
 /**
- * Strip-based pass finder.
+ * Adım 2: Verilen sürede tüm orbit yer izlerini hesapla ve
+ * ROI poligonunu (roll genişletmesiyle) kesen orbit'leri döndür.
  *
- * For each satellite pass near the polygon, the imaging strip is:
- *   swathKm wide, and can be offset up to alt×tan(maxRoll) from nadir.
- * So a tile is reachable if its distance to the ground track ≤
- *   alt×tan(maxRoll) + swathKm/2.
- *
- * Algorithm:
- *   1. Scan at 10s steps, group nearby points into passes
- *   2. For each pass, check which tiles fall within reach
+ * Returns: Array of orbit tracks, where each track is
+ *   [{lat, lon, alt, time}, ...] — ground track points for that pass.
  */
-async function findCoveragePasses(sat, tiles, swathKm, maxRoll, days) {
+async function findOrbitsIntersectingROI(sat, maxRoll, swathKm, days) {
   const now = new Date();
   const endMs = now.getTime() + days * 86400_000;
 
-  const bbox = tilesBBox(tiles);
-  const centerLat = (bbox.minLat + bbox.maxLat) / 2;
-  const centerLon = (bbox.minLon + bbox.maxLon) / 2;
-
-  // Max reachable ground distance: roll offset + half swath
-  // At 550km: tan(5°)*550 + 6 = 48+6 = 54 km → ~0.49°
-  // We add polygon half-extent for the proximity filter
-  const halfExtent = Math.max(bbox.maxLat - bbox.minLat, bbox.maxLon - bbox.minLon) / 2;
+  // Roll ile ulaşılabilir maksimum yer mesafesi
   const reachKm = 600 * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
-  const PROX_DEG = halfExtent + reachKm / 111 + 1;
 
-  // Phase 1: collect ground track grouped by pass (10s step)
-  const passGroups = [];
-  let track = [];
-  let inPass = false;
-  const stepMs = 10_000;
-  const totalSteps = (endMs - now.getTime()) / stepMs;
-  let step = 0;
+  // Coarse scan: 30s step ile tüm geçişleri topla
+  // (bir LEO uydusu ~7km/s, 30s = 210km adım)
+  const STEP_MS = 30_000;
+  const totalSteps = Math.ceil((endMs - now.getTime()) / STEP_MS);
 
-  for (let tMs = now.getTime(); tMs <= endMs; tMs += stepMs) {
-    step++;
-    if (step % 300 === 0) {
-      progress = step / totalSteps * 0.6;
-      progressLabel = `Taranıyor (${passGroups.length} geçiş)`;
-      updateProgress();
+  // Tüm orbit'leri topla (proximity box yerine doğrudan ROI kesişimi kontrol et)
+  const orbits = [];
+  let currentOrbit = [];
+  let wasNear = false;
+
+  for (let step = 0; step < totalSteps; step++) {
+    if (step % 200 === 0) {
+      setProgress(0.05 + (step / totalSteps) * 0.45, `Yörünge taranıyor... (${orbits.length} kesişim)`);
       await yieldToUI();
     }
 
+    const tMs = now.getTime() + step * STEP_MS;
     const t = new Date(tMs);
     const pos = propagateAt(sat.satrec, t);
     if (!pos) continue;
 
-    const dLat = Math.abs(pos.lat - centerLat);
-    const dLon = Math.abs(normalizeLonDiff(pos.lon, centerLon));
+    // Bu nokta ROI'ye yeterince yakın mı?
+    // Kontrol: yer izi noktası, polygon'un herhangi bir kenarına/köşesine
+    // reachKm mesafesi içinde mi?
+    const nearROI = isPointNearPolygon(pos.lat, pos.lon, polygonCoords, reachKm);
 
-    if (dLat < PROX_DEG && dLon < PROX_DEG) {
-      track.push({ lat: pos.lat, lon: pos.lon, alt: pos.alt, time: t });
-      inPass = true;
-    } else if (inPass) {
-      if (track.length >= 3) passGroups.push(track);
-      track = [];
-      inPass = false;
+    if (nearROI) {
+      currentOrbit.push({ lat: pos.lat, lon: pos.lon, alt: pos.alt, time: t });
+      wasNear = true;
+    } else if (wasNear) {
+      if (currentOrbit.length >= 2) {
+        orbits.push(currentOrbit);
+      }
+      currentOrbit = [];
+      wasNear = false;
     }
   }
-  if (inPass && track.length >= 3) passGroups.push(track);
-
-  if (passGroups.length === 0) {
-    showToast(`${days} günde yakın geçiş bulunamadı`, 'warning');
-    return [];
+  if (wasNear && currentOrbit.length >= 2) {
+    orbits.push(currentOrbit);
   }
 
-  showToast(`${passGroups.length} geçiş bulundu, kapsama hesaplanıyor...`, 'info');
-  await yieldToUI();
+  return orbits;
+}
 
-  // Phase 2: for each pass, check tile coverage using strip model
-  const result = [];
+/**
+ * Bir noktanın polygon'a (veya polygon kenarına) belirli bir
+ * mesafe içinde olup olmadığını kontrol eder.
+ */
+function isPointNearPolygon(lat, lon, polyCoords, radiusKm) {
+  // 1. Nokta polygon içinde mi?
+  if (pointInPolygon([lat, lon], polyCoords)) return true;
 
-  for (let pi = 0; pi < passGroups.length; pi++) {
-    progress = 0.6 + (pi / passGroups.length) * 0.38;
-    progressLabel = `Şerit ${pi + 1}/${passGroups.length}`;
-    updateProgress();
-    if (pi % 3 === 0) await yieldToUI();
+  // 2. Polygon köşelerine mesafe kontrolü (hızlı yaklaşım)
+  const radiusDeg = radiusKm / 111;
+  for (const [vLat, vLon] of polyCoords) {
+    // Hızlı dikdörtgen filtre
+    if (Math.abs(lat - vLat) > radiusDeg) continue;
+    if (Math.abs(normalizeLonDiff(lon, vLon)) > radiusDeg) continue;
+    // Gerçek mesafe
+    if (haversineKm(lat, lon, vLat, vLon) <= radiusKm) return true;
+  }
 
-    const pts = passGroups[pi];
-    const avgAlt = pts.reduce((s, p) => s + p.alt, 0) / pts.length;
+  // 3. Polygon kenarlarına mesafe (her kenar segmenti için en yakın nokta)
+  for (let i = 0; i < polyCoords.length; i++) {
+    const j = (i + 1) % polyCoords.length;
+    const [lat1, lon1] = polyCoords[i];
+    const [lat2, lon2] = polyCoords[j];
+    const dist = pointToSegmentDistKm(lat, lon, lat1, lon1, lat2, lon2);
+    if (dist <= radiusKm) return true;
+  }
 
-    // Max distance for a tile to be within the imaging strip
+  return false;
+}
+
+/**
+ * Bir noktadan bir çizgi segmentine olan minimum mesafe (km).
+ * Basitleştirilmiş düzlem yaklaşımı — kısa mesafeler için yeterli.
+ */
+function pointToSegmentDistKm(pLat, pLon, aLat, aLon, bLat, bLon) {
+  // Segment vektörü (derece cinsinden)
+  const dx = bLon - aLon;
+  const dy = bLat - aLat;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) return haversineKm(pLat, pLon, aLat, aLon);
+
+  // Segment üzerindeki en yakın nokta parametresi (0-1 arası clamp)
+  let t = ((pLon - aLon) * dx + (pLat - aLat) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const closestLat = aLat + t * dy;
+  const closestLon = aLon + t * dx;
+
+  return haversineKm(pLat, pLon, closestLat, closestLon);
+}
+
+/**
+ * Adım 3: Her orbit track'i için, hangi karoları kapsadığını hesapla.
+ *
+ * Şerit modeli: fayans merkezi, yer izine (ground track'e)
+ * alt×tan(maxRoll) + swathKm/2 mesafesi içindeyse o fayans kapsanır.
+ */
+function computeStripTileCoverage(orbitTracks, tiles, swathKm, maxRoll) {
+  const results = [];
+
+  for (const track of orbitTracks) {
+    const avgAlt = track.reduce((s, p) => s + p.alt, 0) / track.length;
     const maxReachKm = avgAlt * Math.tan(maxRoll * Math.PI / 180) + swathKm / 2;
-    const maxReachDegLat = maxReachKm / 111;
-    const maxReachDegLon = maxReachKm / (111 * Math.max(0.1, Math.cos(centerLat * Math.PI / 180)));
 
-    const tileMinDist = new Map(); // tile.id → min distance in km
+    const coveredIds = [];
+    const distMap = new Map();
 
     for (const tile of tiles) {
+      // Fayans merkezinin ground track'e en yakın mesafesi
       let minDist = Infinity;
-
-      for (const pt of pts) {
-        if (Math.abs(tile.lat - pt.lat) > maxReachDegLat) continue;
-        if (Math.abs(normalizeLonDiff(tile.lon, pt.lon)) > maxReachDegLon) continue;
-        const d = haversineKm(pt.lat, pt.lon, tile.lat, tile.lon);
+      for (let i = 0; i < track.length - 1; i++) {
+        const d = pointToSegmentDistKm(
+          tile.lat, tile.lon,
+          track[i].lat, track[i].lon,
+          track[i + 1].lat, track[i + 1].lon
+        );
         if (d < minDist) minDist = d;
       }
 
       if (minDist <= maxReachKm) {
-        tileMinDist.set(tile.id, minDist);
+        coveredIds.push(tile.id);
+        distMap.set(tile.id, minDist);
       }
     }
 
-    if (tileMinDist.size === 0) continue;
+    if (coveredIds.length === 0) continue;
 
-    // Best time = closest approach to polygon center
-    let bestPt = pts[0];
+    // En yakın zaman noktası (polygon merkezine)
+    const centerLat = tiles.reduce((s, t) => s + t.lat, 0) / tiles.length;
+    const centerLon = tiles.reduce((s, t) => s + t.lon, 0) / tiles.length;
+    let bestPt = track[0];
     let bestD = Infinity;
-    for (const pt of pts) {
+    for (const pt of track) {
       const d = haversineKm(pt.lat, pt.lon, centerLat, centerLon);
       if (d < bestD) { bestD = d; bestPt = pt; }
     }
 
-    // Convert distances to equivalent off-nadir for display
-    const rolls = [...tileMinDist.values()].map(d => Math.atan(d / avgAlt) * 180 / Math.PI);
+    const rolls = coveredIds.map(id => {
+      const dist = distMap.get(id);
+      return Math.atan(dist / avgAlt) * 180 / Math.PI;
+    });
 
-    result.push({
+    results.push({
       time: bestPt.time,
       altKm: avgAlt,
       sunElev: sunElevation(centerLat, centerLon, bestPt.time),
-      coveredTileIds: [...tileMinDist.keys()],
-      tileMinRoll: tileMinDist,
+      coveredTileIds: coveredIds,
+      tileMinRoll: distMap,
       minRollDeg: Math.min(...rolls),
       maxRollDeg: Math.max(...rolls),
+      newTileIds: [],
+      cumCoverage: 0,
     });
   }
 
-  return result;
+  return results;
 }
 
 // ───────── Tile generation ─────────
