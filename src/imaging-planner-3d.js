@@ -1151,16 +1151,20 @@ function rollSignForTarget(satrec, t) {
 
 function drawSwathStrip(opp, totalSec, highlight) {
   const preset = getPreset(presetId);
-  const halfMs = (totalSec / 2) * 1000;
   const steps = Math.max(20, Math.ceil(totalSec / 5));
   const stepMs = (totalSec * 1000) / steps;
   const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
   const signedRoll = rollSignForTarget(opp.sat.satrec, opp.time) * Math.abs(opp.rollDeg);
 
+  // Strip mode: opp.time is the capture start; extend forward in sat motion.
+  // Overview mode: centered around opp.time (symmetric window).
+  const startOffsetMs = highlight ? 0 : -(totalSec / 2) * 1000;
+  const endOffsetMs = highlight ? totalSec * 1000 : (totalSec / 2) * 1000;
+
   const leftEdge = [];
   const rightEdge = [];
 
-  for (let dt = -halfMs; dt <= halfMs; dt += stepMs) {
+  for (let dt = startOffsetMs; dt <= endOffsetMs; dt += stepMs) {
     const t = new Date(opp.time.getTime() + dt);
     const pre = propagateAt(opp.sat.satrec, new Date(t.getTime() - 1000));
     const cur = propagateAt(opp.sat.satrec, t);
