@@ -529,12 +529,12 @@ async function runAnalysis() {
     for (let i = 0; i < passes.length; i++) {
       if (passes[i].track && passes[i].track.length >= 2) {
         drawOrbitTrack(passes[i].track, i, {
-          margin: 0.25,
+          margin: 0.3,
           weight: 1.5,
           opacity: 0.35,
         });
         drawImagingStrip(passes[i], i, {
-          margin: 0.25,
+          margin: 0.05,
           weight: 1,
           fillOpacity: 0.08,
         });
@@ -547,7 +547,12 @@ async function runAnalysis() {
       showToast(`Kapsama bulunamadı — roll açısını artırın veya süreyi uzatın`, 'warning');
     } else {
       const pct = (covered.size / tiles.length * 100).toFixed(0);
-      showToast(`${passes.length} geçişte %${pct} kapsama`, 'success');
+      const missing = tiles.length - covered.size;
+      if (missing > 0) {
+        showToast(`${passes.length} geçiş · %${pct} · ${missing} karo kapsanamadı (roll/süre artırın)`, 'warning');
+      } else {
+        showToast(`${passes.length} geçişte %100 kapsama`, 'success');
+      }
       selectPass(0);
     }
   } catch (err) {
@@ -656,14 +661,26 @@ function assignBestStrip(track, tiles, alreadyCovered, swathKm, maxRoll) {
 
   if (tileCT.length === 0) return null;
 
-  // Farklı offset değerlerini dene, en çok yeni karo kapsayan şeridi seç
+  // Aday offset'ler: düzgün grid + her uncovered karonun ct'si (o karoyu garanti
+  // yakalayan offset'i de mutlaka dene). Böylece step granularity kaynaklı boşluk
+  // kalmaz — overlap olsa bile eksik karo planlanabilir.
+  const offsets = new Set();
+  const step = Math.max(0.5, halfSwath / 4);
+  for (let offset = -maxOffsetKm; offset <= maxOffsetKm; offset += step) {
+    offsets.add(Math.round(offset * 100) / 100);
+  }
+  for (const t of tileCT) {
+    if (alreadyCovered.has(t.id)) continue;
+    const o = Math.max(-maxOffsetKm, Math.min(maxOffsetKm, t.ct));
+    offsets.add(Math.round(o * 100) / 100);
+  }
+
   let bestOffset = 0;
   let bestNewCount = 0;
   let bestStripIds = [];
   let bestAllIds = [];
 
-  const step = Math.max(1, swathKm / 4);
-  for (let offset = -maxOffsetKm; offset <= maxOffsetKm; offset += step) {
+  for (const offset of offsets) {
     const inStrip = tileCT.filter(t => Math.abs(t.ct - offset) <= halfSwath);
     const newInStrip = inStrip.filter(t => !alreadyCovered.has(t.id));
     if (newInStrip.length > bestNewCount) {
@@ -739,7 +756,7 @@ function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
 function drawOrbitTrack(track, idx, opts) {
   const style = opts || {};
   const pb = polygonBBox(polygonCoords);
-  const m = style.margin != null ? style.margin : 0.15;
+  const m = style.margin != null ? style.margin : 0.3;
   const trimmed = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
@@ -823,8 +840,10 @@ function selectPass(idx) {
   clearTileLayers();
   // Orbit'leri temizleme — birikimli, sadece yenisini ekle
 
-  // ─── Arka plan: tüm karolar transparan grid ───
+  // ─── Tiles: bu geçişin vurgulu, diğer kapsananlar soluk, kapsanamayanlar kırmızı ───
   const currentSet = new Set(passes[idx].newTileIds);
+  const allCovered = new Set();
+  for (const p of passes) p.newTileIds.forEach(id => allCovered.add(id));
 
   for (const tile of tiles) {
     const half_lat = tile.latStep / 2;
@@ -836,14 +855,17 @@ function selectPass(idx) {
 
     let tileColor, weight, fillOpacity;
     if (currentSet.has(tile.id)) {
-      const c = PASS_PALETTE[idx % PASS_PALETTE.length];
-      tileColor = c;
+      tileColor = PASS_PALETTE[idx % PASS_PALETTE.length];
       weight = 2;
-      fillOpacity = 0.45;
-    } else {
-      tileColor = '#30363d';
+      fillOpacity = 0.5;
+    } else if (allCovered.has(tile.id)) {
+      tileColor = '#7d8590';
       weight = 0.5;
-      fillOpacity = 0.05;
+      fillOpacity = 0.1;
+    } else {
+      tileColor = '#f85149';
+      weight = 1;
+      fillOpacity = 0.25;
     }
 
     const rect = L.rectangle(bounds, {
@@ -858,22 +880,22 @@ function selectPass(idx) {
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
 
   if (pass.track && pass.track.length >= 2) {
-    // Gerçek yer izi — uydunun ROI'ye yaklaşıp uzaklaşması (geniş margin)
+    // Yer izi — ROI'ye giriş/çıkış yönünü göster (hafif uzantı)
     drawOrbitTrack(pass.track, idx, {
       color,
-      weight: 3.5,
+      weight: 3,
       opacity: 1,
       dashArray: null,
-      margin: 3,
+      margin: 0.8,
       targetLayers: selectedPassLayers,
     });
 
-    // Görüntüleme şeridi — uydunun roll ile çektiği yerdeki alan
+    // Görüntüleme şeridi — SADECE çizilen alana giren/çıkan frame'ler
     drawImagingStrip(pass, idx, {
       color,
       weight: 2.5,
-      fillOpacity: 0.4,
-      margin: 3,
+      fillOpacity: 0.35,
+      margin: 0.05,
       targetLayers: selectedPassLayers,
     });
   }
@@ -923,9 +945,9 @@ function drawImagingStrip(pass, idx, opts) {
   const sinPerp = Math.sin(perpAngle);
   const cosPerp = Math.cos(perpAngle);
 
-  // Polygon bbox'a yakın noktaları filtrele
+  // Sadece çizilen alana giren/çıkan kısım — strip minimal tampon ile
   const pb = polygonBBox(polygonCoords);
-  const m = options.margin != null ? options.margin : 0.15;
+  const m = options.margin != null ? options.margin : 0.05;
   const nearTrack = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
@@ -1001,8 +1023,10 @@ function updateCoverageOverlay() {
     document.querySelector('.gag-map-wrap').append(overlay);
   }
   const pct = (completionInfo.coveredTiles / completionInfo.totalTiles * 100).toFixed(0);
+  const full = completionInfo.coveredTiles === completionInfo.totalTiles;
+  const missing = completionInfo.totalTiles - completionInfo.coveredTiles;
   overlay.innerHTML = `
-    <span class="gag-cov-pct">%${pct}</span> kapsama · ${completionInfo.passCount} geçiş · ${completionInfo.coveredTiles}/${completionInfo.totalTiles} karo
+    <span class="gag-cov-pct" style="color:${full ? '#7ee787' : '#f85149'};">%${pct}</span> kapsama · ${completionInfo.passCount} geçiş · ${completionInfo.coveredTiles}/${completionInfo.totalTiles} karo${missing > 0 ? ` · <span style="color:#f85149;">${missing} eksik</span>` : ''}
   `;
 }
 
