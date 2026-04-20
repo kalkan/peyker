@@ -579,8 +579,7 @@ async function findOrbitPasses(sat, days) {
   const endMs = now.getTime() + days * 86400_000;
 
   const bbox = polygonBBox(polygonCoords);
-  // Polygon bbox + 5° — gerçek yer izi gösterimi için geniş tampon
-  const marginDeg = 5;
+  const marginDeg = 2;
   const bboxMinLat = bbox.minLat - marginDeg;
   const bboxMaxLat = bbox.maxLat + marginDeg;
   const bboxMinLon = bbox.minLon - marginDeg;
@@ -751,13 +750,15 @@ function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
 
 /**
  * Orbit yer izini haritada polyline olarak çiz.
- * Sadece polygon bbox yakınındaki kısmını çiz.
+ * Track noktaları arası interpolasyon ile ROI kesitinde kesintisiz çizgi sağlanır.
  */
 function drawOrbitTrack(track, idx, opts) {
   const style = opts || {};
   const pb = polygonBBox(polygonCoords);
-  const m = style.margin != null ? style.margin : 0.3;
-  const trimmed = track.filter(p =>
+  const m = style.margin != null ? style.margin : 0.5;
+
+  const dense = interpolateTrack(track, 5);
+  const trimmed = dense.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
   );
@@ -772,7 +773,7 @@ function drawOrbitTrack(track, idx, opts) {
     dashArray: style.dashArray !== undefined ? style.dashArray : '6,4',
   });
   line.bindTooltip(
-    `Geçiş ${idx + 1} · ${fmtDate(trimmed[0].time)} ${fmtTime(trimmed[0].time)}`,
+    `Geçiş ${idx + 1} · ${fmtDate(track[0].time)} ${fmtTime(track[0].time)}`,
     { sticky: true, className: 'gag-track-tooltip' }
   );
   line.on('click', () => selectPass(idx));
@@ -880,22 +881,22 @@ function selectPass(idx) {
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
 
   if (pass.track && pass.track.length >= 2) {
-    // Yer izi — ROI'ye giriş/çıkış yönünü göster (hafif uzantı)
+    // Yer izi — ROI'ye giriş/çıkış
     drawOrbitTrack(pass.track, idx, {
       color,
       weight: 3,
       opacity: 1,
       dashArray: null,
-      margin: 0.8,
+      margin: 0.5,
       targetLayers: selectedPassLayers,
     });
 
-    // Görüntüleme şeridi — SADECE çizilen alana giren/çıkan frame'ler
+    // Swath yerde gerçek şekilde — ROI'nin giriş/çıkış kısmı
     drawImagingStrip(pass, idx, {
       color,
-      weight: 2.5,
+      weight: 2,
       fillOpacity: 0.35,
-      margin: 0.05,
+      margin: 0.15,
       targetLayers: selectedPassLayers,
     });
   }
@@ -945,10 +946,11 @@ function drawImagingStrip(pass, idx, opts) {
   const sinPerp = Math.sin(perpAngle);
   const cosPerp = Math.cos(perpAngle);
 
-  // Sadece çizilen alana giren/çıkan kısım — strip minimal tampon ile
+  // ROI alanında kesintisiz strip: interpolasyon + bbox filtre
   const pb = polygonBBox(polygonCoords);
-  const m = options.margin != null ? options.margin : 0.05;
-  const nearTrack = track.filter(p =>
+  const m = options.margin != null ? options.margin : 0.15;
+  const dense = interpolateTrack(track, 5);
+  const nearTrack = dense.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
   );
@@ -1028,6 +1030,31 @@ function updateCoverageOverlay() {
   overlay.innerHTML = `
     <span class="gag-cov-pct" style="color:${full ? '#7ee787' : '#f85149'};">%${pct}</span> kapsama · ${completionInfo.passCount} geçiş · ${completionInfo.coveredTiles}/${completionInfo.totalTiles} karo${missing > 0 ? ` · <span style="color:#f85149;">${missing} eksik</span>` : ''}
   `;
+}
+
+// ───────── Track interpolation ─────────
+function interpolateTrack(track, maxGapKm) {
+  if (track.length < 2) return track;
+  const out = [track[0]];
+  for (let i = 1; i < track.length; i++) {
+    const prev = track[i - 1];
+    const curr = track[i];
+    const dist = haversineKm(prev.lat, prev.lon, curr.lat, curr.lon);
+    if (dist > maxGapKm) {
+      const steps = Math.ceil(dist / maxGapKm);
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps;
+        out.push({
+          lat: prev.lat + (curr.lat - prev.lat) * t,
+          lon: prev.lon + (curr.lon - prev.lon) * t,
+          alt: prev.alt + (curr.alt - prev.alt) * t,
+          time: new Date(prev.time.getTime() + (curr.time.getTime() - prev.time.getTime()) * t),
+        });
+      }
+    }
+    out.push(curr);
+  }
+  return out;
 }
 
 // ───────── Helpers ─────────
