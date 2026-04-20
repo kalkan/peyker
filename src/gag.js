@@ -728,22 +728,23 @@ function alongTrackDistKm(lat, lon, refLat, refLon, heading) {
  * Orbit yer izini haritada polyline olarak çiz.
  * Sadece polygon bbox yakınındaki kısmını çiz.
  */
-function drawOrbitTrack(track, idx, style) {
+function drawOrbitTrack(track, idx, opts) {
+  const style = opts || {};
   const pb = polygonBBox(polygonCoords);
-  const m = 0.15;
+  const m = style.margin != null ? style.margin : 0.15;
   const trimmed = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
   );
   if (trimmed.length < 2) return;
 
-  const c = (style && style.color) || PASS_PALETTE[idx % PASS_PALETTE.length];
+  const c = style.color || PASS_PALETTE[idx % PASS_PALETTE.length];
   const latlngs = trimmed.map(p => [p.lat, p.lon]);
   const line = L.polyline(latlngs, {
     color: c,
-    weight: (style && style.weight) || 2.5,
-    opacity: (style && style.opacity) || 0.7,
-    dashArray: style ? style.dashArray : '6,4',
+    weight: style.weight || 2.5,
+    opacity: style.opacity || 0.7,
+    dashArray: style.dashArray !== undefined ? style.dashArray : '6,4',
   });
   line.bindTooltip(
     `Geçiş ${idx + 1} · ${fmtDate(trimmed[0].time)} ${fmtTime(trimmed[0].time)}`,
@@ -751,7 +752,8 @@ function drawOrbitTrack(track, idx, style) {
   );
   line.on('click', () => selectPass(idx));
   line.addTo(map);
-  orbitTrackLayers.push(line);
+  const target = style.targetLayers || orbitTrackLayers;
+  target.push(line);
 }
 
 /**
@@ -870,21 +872,27 @@ function selectPass(idx) {
     tileLayers.push(rect);
   }
 
-  // ─── Bu geçişin orbit + imaging strip'ini ekle (birikimli kalır) ───
+  // ─── Seçili geçişin orbit + imaging strip (daha geniş ve belirgin) ───
   const pass = passes[idx];
   const color = PASS_PALETTE[idx % PASS_PALETTE.length];
 
   if (pass.track && pass.track.length >= 2) {
-    // Orbit ground track
     drawOrbitTrack(pass.track, idx, {
       color,
-      weight: 2.5,
-      opacity: 0.85,
+      weight: 3,
+      opacity: 0.95,
       dashArray: null,
+      margin: 0.4,
+      targetLayers: selectedPassLayers,
     });
 
-    // Imaging strip (swath polygon) — roll offset ile yerdeki çekim alanı
-    drawImagingStrip(pass, idx);
+    drawImagingStrip(pass, idx, {
+      color,
+      weight: 2,
+      fillOpacity: 0.3,
+      margin: 0.4,
+      targetLayers: selectedPassLayers,
+    });
   }
 
   // ─── Popup ───
@@ -911,11 +919,12 @@ function selectPass(idx) {
  * Görüntüleme şeridini çiz — orbit yer izine göre roll offset ile
  * yerde çekilen alanı gösteren polygon (swathKm genişliğinde).
  */
-function drawImagingStrip(pass, idx) {
+function drawImagingStrip(pass, idx, opts) {
+  const options = opts || {};
   const track = pass.track;
   if (!track || track.length < 2) return;
 
-  const color = PASS_PALETTE[idx % PASS_PALETTE.length];
+  const color = options.color || PASS_PALETTE[idx % PASS_PALETTE.length];
   const preset = getPreset(presetId);
   const swathKm = preset.swathKm;
   const halfSwath = swathKm / 2;
@@ -931,9 +940,9 @@ function drawImagingStrip(pass, idx) {
   const sinPerp = Math.sin(perpAngle);
   const cosPerp = Math.cos(perpAngle);
 
-  // Polygon bbox'a yakın noktaları filtrele — sadece alana giriş/çıkış kadar
+  // Polygon bbox'a yakın noktaları filtrele
   const pb = polygonBBox(polygonCoords);
-  const m = 0.15;
+  const m = options.margin != null ? options.margin : 0.15;
   const nearTrack = track.filter(p =>
     p.lat >= pb.minLat - m && p.lat <= pb.maxLat + m &&
     p.lon >= pb.minLon - m && p.lon <= pb.maxLon + m
@@ -947,14 +956,12 @@ function drawImagingStrip(pass, idx) {
   for (const pt of nearTrack) {
     const cosLat = Math.cos(pt.lat * Math.PI / 180);
 
-    // Sol kenar (offset - halfSwath km, perpendicular yönde)
     const leftDist = offsetKm - halfSwath;
     leftEdge.push([
       pt.lat + (leftDist * cosPerp) / 111,
       pt.lon + (leftDist * sinPerp) / (111 * cosLat),
     ]);
 
-    // Sağ kenar (offset + halfSwath km, perpendicular yönde)
     const rightDist = offsetKm + halfSwath;
     rightEdge.push([
       pt.lat + (rightDist * cosPerp) / 111,
@@ -962,19 +969,19 @@ function drawImagingStrip(pass, idx) {
     ]);
   }
 
-  // Polygon: sol kenar ileri + sağ kenar geri
   const stripCoords = [...leftEdge, ...rightEdge.reverse()];
 
   const stripPoly = L.polygon(stripCoords, {
     color,
-    weight: 1.5,
+    weight: options.weight || 1.5,
     fillColor: color,
-    fillOpacity: 0.18,
+    fillOpacity: options.fillOpacity || 0.18,
   });
   stripPoly.bindTooltip(`Şerit ${idx + 1} · ${swathKm} km`, { sticky: true });
   stripPoly.on('click', () => selectPass(idx));
   stripPoly.addTo(map);
-  orbitTrackLayers.push(stripPoly);
+  const target = options.targetLayers || orbitTrackLayers;
+  target.push(stripPoly);
 }
 
 function clearTileLayers() {
