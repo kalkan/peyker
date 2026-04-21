@@ -1,0 +1,501 @@
+/* satellites-tr.css — Turkish EO satellite timeline */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Header ───────────────────────────────────── */
+.trs-header {
+  background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
+  border-bottom: 1px solid #21262d;
+  padding: 48px 24px 36px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.trs-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 600px 300px at 50% 0%, rgba(88,166,255,0.08) 0%, transparent 100%),
+    radial-gradient(ellipse 400px 200px at 30% 100%, rgba(210,168,255,0.06) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.trs-header-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.trs-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+}
+
+.trs-sub {
+  font-size: 14px;
+  color: #8b949e;
+  margin-bottom: 16px;
+}
+
+.trs-nav {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.trs-nav a {
+  font-size: 12px;
+  color: #8b949e;
+  text-decoration: none;
+  padding: 5px 12px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.trs-nav a:hover {
+  color: #58a6ff;
+  border-color: #58a6ff;
+}
+
+/* ── Stats bar ─────────────────────────────────── */
+.trs-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  padding: 28px 16px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.trs-stat {
+  text-align: center;
+}
+.trs-stat-val {
+  font-size: 28px;
+  font-weight: 800;
+  color: #e6edf3;
+  line-height: 1.1;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.trs-stat-val.trs-green { color: #7ee787; }
+.trs-stat-val.trs-blue { color: #58a6ff; }
+.trs-stat-label {
+  font-size: 11px;
+  color: #8b949e;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* ── Timeline ──────────────────────────────────── */
+.trs-timeline {
+  position: relative;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+.trs-timeline-line {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, transparent, #30363d 5%, #30363d 95%, transparent);
+  transform: translateX(-50%);
+}
+
+/* ── Card ──────────────────────────────────────── */
+.trs-card {
+  position: relative;
+  width: 47%;
+  margin-bottom: 40px;
+}
+
+.trs-card-left {
+  margin-right: auto;
+  margin-left: 0;
+  padding-right: 28px;
+  text-align: right;
+}
+
+.trs-card-right {
+  margin-left: auto;
+  margin-right: 0;
+  padding-left: 28px;
+  text-align: left;
+}
+
+/* Dot on the timeline center */
+.trs-card-dot {
+  position: absolute;
+  top: 18px;
+  width: 16px;
+  height: 16px;
+  z-index: 2;
+}
+
+.trs-card-left .trs-card-dot {
+  right: -8px;
+}
+.trs-card-right .trs-card-dot {
+  left: -8px;
+}
+
+.trs-card-dot-inner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #30363d;
+  border: 3px solid #0d1117;
+  box-shadow: 0 0 0 2px #30363d;
+}
+
+.trs-card-dot-inner.active {
+  background: var(--card-accent, #7ee787);
+  box-shadow: 0 0 0 2px var(--card-accent, #7ee787), 0 0 12px rgba(126, 231, 135, 0.3);
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 2px var(--card-accent, #7ee787), 0 0 8px rgba(126, 231, 135, 0.25); }
+  50% { box-shadow: 0 0 0 4px var(--card-accent, #7ee787), 0 0 18px rgba(126, 231, 135, 0.45); }
+}
+
+/* Year pill beside dot */
+.trs-card-year {
+  position: absolute;
+  top: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--card-accent, #58a6ff);
+  background: #0d1117;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #21262d;
+}
+
+.trs-card-left .trs-card-year {
+  right: -60px;
+}
+.trs-card-right .trs-card-year {
+  left: -60px;
+}
+
+/* Card content box */
+.trs-card-content {
+  background: linear-gradient(135deg, #161b22 0%, #0f141a 100%);
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 18px 16px 14px;
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.trs-card-content::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--card-accent, #58a6ff);
+  border-radius: 12px 12px 0 0;
+  opacity: 0.8;
+}
+
+.trs-card:hover .trs-card-content {
+  border-color: var(--card-accent, #58a6ff);
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.4);
+}
+
+/* Content elements — override text-align for inner layout */
+.trs-card-content * {
+  text-align: left;
+}
+
+.trs-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.trs-card-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: #e6edf3;
+  letter-spacing: -0.3px;
+}
+
+.trs-card-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.trs-card-status.active {
+  background: rgba(126, 231, 135, 0.14);
+  color: #7ee787;
+  border: 1px solid rgba(126, 231, 135, 0.3);
+}
+.trs-card-status.inactive {
+  background: rgba(139, 148, 158, 0.12);
+  color: #8b949e;
+  border: 1px solid rgba(139, 148, 158, 0.25);
+}
+
+.trs-card-launch {
+  font-size: 12px;
+  color: #8b949e;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  margin-bottom: 8px;
+}
+
+.trs-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.trs-card-meta span {
+  font-size: 11px;
+  color: #c9d1d9;
+  background: rgba(110, 118, 129, 0.12);
+  border: 1px solid #21262d;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Specs grid */
+.trs-card-specs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.trs-spec {
+  padding: 8px 10px;
+  background: rgba(88, 166, 255, 0.04);
+  border: 1px solid #21262d;
+  border-radius: 8px;
+}
+.trs-spec-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 3px;
+}
+.trs-spec-val {
+  font-size: 12.5px;
+  color: #c9d1d9;
+}
+.trs-spec-res {
+  border-color: rgba(88, 166, 255, 0.2);
+  background: rgba(88, 166, 255, 0.06);
+}
+.trs-res {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--card-accent, #58a6ff);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* Highlights */
+.trs-card-highlights {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px 0;
+}
+.trs-card-highlights li {
+  font-size: 12px;
+  color: #c9d1d9;
+  padding: 3px 0;
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.5;
+}
+.trs-card-highlights li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--card-accent, #58a6ff);
+  opacity: 0.7;
+}
+
+/* IDs / builder row */
+.trs-card-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.trs-card-ids span {
+  font-size: 10px;
+  color: #8b949e;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: rgba(48, 54, 61, 0.5);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* CTA link */
+.trs-card-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--card-accent, #58a6ff);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-accent, #58a6ff) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card-accent, #58a6ff) 30%, transparent);
+  transition: background 0.15s;
+}
+.trs-card-track:hover {
+  background: color-mix(in srgb, var(--card-accent, #58a6ff) 20%, transparent);
+}
+
+/* ── Upcoming section ─────────────────────────── */
+.trs-upcoming {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 12px 16px 40px;
+}
+
+.trs-up-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #d29922;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.trs-up-grid {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.trs-up-card {
+  background: #161b22;
+  border: 1px dashed #30363d;
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-width: 200px;
+  text-align: center;
+}
+.trs-up-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #e6edf3;
+  margin-bottom: 4px;
+}
+.trs-up-year {
+  font-size: 22px;
+  font-weight: 800;
+  color: #d29922;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.trs-up-res {
+  font-size: 14px;
+  color: #58a6ff;
+  font-weight: 700;
+  margin: 4px 0;
+}
+.trs-up-note {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+/* ── Footer ───────────────────────────────────── */
+.trs-footer {
+  text-align: center;
+  padding: 24px;
+  border-top: 1px solid #21262d;
+  font-size: 12px;
+  color: #484f58;
+}
+
+/* ── Responsive ───────────────────────────────── */
+@media (max-width: 840px) {
+  /* Stack cards on one side */
+  .trs-timeline-line {
+    left: 20px;
+  }
+
+  .trs-card {
+    width: calc(100% - 48px);
+    margin-left: 48px;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: left;
+  }
+
+  .trs-card-left,
+  .trs-card-right {
+    margin-left: 48px;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: left;
+  }
+
+  .trs-card-dot {
+    left: -36px !important;
+    right: auto !important;
+  }
+
+  .trs-card-year {
+    left: -78px !important;
+    right: auto !important;
+    font-size: 11px;
+  }
+
+  .trs-stats {
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .trs-stat-val { font-size: 22px; }
+
+  .trs-up-grid {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .trs-header h1 { font-size: 22px; }
+}
+
+@media (max-width: 500px) {
+  .trs-card-year { display: none; }
+  .trs-card-specs { grid-template-columns: 1fr; }
+}

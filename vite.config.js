@@ -21,6 +21,7 @@ export default defineConfig({
         'stations': resolve(__dirname, 'stations-src.html'),
         'constellation': resolve(__dirname, 'constellation-src.html'),
         'animation': resolve(__dirname, 'animation-src.html'),
+        'satellites-tr': resolve(__dirname, 'satellites-tr-src.html'),
       },
     },
   },

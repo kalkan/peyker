@@ -29,6 +29,7 @@ const PAGES = [
   ['stations-src', 'stations'],
   ['constellation-src', 'constellation'],
   ['animation-src', 'animation'],
+  ['satellites-tr-src', 'satellites-tr'],
 ];
 
 for (const [src, dst] of PAGES) {
