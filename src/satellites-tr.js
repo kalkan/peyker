@@ -183,6 +183,7 @@ const AUTOPLAY_MS = 5000;
 let activeIdx = 0;
 let autoplayTimer = null;
 let autoplayOn = true;
+let shootingTimer = null;
 
 // ───────── Init ─────────
 function init() {
@@ -244,6 +245,9 @@ function init() {
     </footer>
   `;
 
+  createStarfield();
+  startShootingStars();
+
   renderStats();
   renderYears(yearRange);
   renderNodes(yearRange);
@@ -257,6 +261,42 @@ function init() {
       startAutoplay();
     }, 1800);
   }, 200);
+}
+
+function createStarfield() {
+  const el = document.createElement('div');
+  el.className = 'trs-starfield';
+  el.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 180; i++) {
+    const star = document.createElement('div');
+    const size = Math.random() < 0.1 ? 2.5 : (Math.random() < 0.3 ? 1.8 : 1);
+    const baseOp = 0.12 + Math.random() * 0.4;
+    const peakOp = Math.min(baseOp + 0.25 + Math.random() * 0.35, 1);
+    star.className = 'trs-star' + (size >= 2 ? ' trs-star-bright' : '');
+    star.style.cssText =
+      `left:${(Math.random()*100).toFixed(1)}%;top:${(Math.random()*100).toFixed(1)}%;` +
+      `width:${size}px;height:${size}px;` +
+      `--star-base:${baseOp.toFixed(2)};--star-peak:${peakOp.toFixed(2)};` +
+      `animation-delay:${(Math.random()*5).toFixed(1)}s;` +
+      `animation-duration:${(2+Math.random()*4).toFixed(1)}s`;
+    if (Math.random() < 0.08) star.style.background = 'rgba(120,180,255,0.9)';
+    else if (Math.random() < 0.04) star.style.background = 'rgba(255,210,140,0.85)';
+    el.append(star);
+  }
+  document.body.prepend(el);
+}
+
+function startShootingStars() {
+  const spawn = () => {
+    const s = document.createElement('div');
+    s.className = 'trs-shooting-star';
+    s.style.top = `${5 + Math.random() * 40}%`;
+    s.style.left = `${Math.random() * 65}%`;
+    document.body.append(s);
+    s.addEventListener('animationend', () => s.remove());
+    shootingTimer = setTimeout(spawn, 3000 + Math.random() * 8000);
+  };
+  shootingTimer = setTimeout(spawn, 1500);
 }
 
 function computeYearRange() {
@@ -493,6 +533,7 @@ function updatePlayIcon() {
 // Clean up timer on page unload
 window.addEventListener('beforeunload', () => {
   if (autoplayTimer) clearInterval(autoplayTimer);
+  if (shootingTimer) clearTimeout(shootingTimer);
 });
 
 // ───────── Start ─────────

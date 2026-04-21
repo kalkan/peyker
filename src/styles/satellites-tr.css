@@ -10,38 +10,106 @@ body {
   overflow-x: hidden;
 }
 
-/* Subtle stars background */
+/* ── Deep-space nebula layers ────────────────────── */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background-image:
-    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.15), transparent),
-    radial-gradient(1px 1px at 70% 15%, rgba(255,255,255,0.12), transparent),
-    radial-gradient(1px 1px at 40% 70%, rgba(255,255,255,0.1), transparent),
-    radial-gradient(1px 1px at 85% 60%, rgba(255,255,255,0.14), transparent),
-    radial-gradient(1px 1px at 15% 85%, rgba(255,255,255,0.1), transparent),
-    radial-gradient(1.5px 1.5px at 55% 40%, rgba(88,166,255,0.3), transparent);
-  background-size: 100% 100%;
+  background:
+    radial-gradient(ellipse 900px 600px at 12% 12%, rgba(56, 30, 120, 0.22), transparent 70%),
+    radial-gradient(ellipse 700px 500px at 88% 22%, rgba(22, 55, 145, 0.20), transparent 70%),
+    radial-gradient(ellipse 1000px 600px at 50% 88%, rgba(80, 25, 105, 0.14), transparent 70%),
+    radial-gradient(ellipse 500px 400px at 68% 55%, rgba(40, 80, 165, 0.10), transparent 70%),
+    radial-gradient(ellipse 400px 300px at 35% 45%, rgba(100, 45, 140, 0.08), transparent 70%);
   pointer-events: none;
   z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 100% 250px at 50% 100%, rgba(15, 50, 120, 0.18), transparent 60%),
+    radial-gradient(ellipse 600px 300px at 25% 50%, rgba(90, 40, 135, 0.06), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Animated starfield ─────────────────────────── */
+.trs-starfield {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.trs-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  animation: twinkle ease-in-out infinite;
+}
+
+.trs-star-bright {
+  box-shadow: 0 0 4px rgba(200, 220, 255, 0.5);
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: var(--star-base, 0.2); }
+  50% { opacity: var(--star-peak, 0.8); }
+}
+
+/* ── Shooting star ──────────────────────────────── */
+.trs-shooting-star {
+  position: fixed;
+  width: 100px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5) 30%, #fff);
+  transform: rotate(-32deg);
+  animation: shoot 0.8s ease-out forwards;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.trs-shooting-star::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px 2px rgba(180, 210, 255, 0.7);
+}
+
+@keyframes shoot {
+  0%   { opacity: 0; transform: rotate(-32deg) translateX(0); }
+  10%  { opacity: 1; }
+  100% { opacity: 0; transform: rotate(-32deg) translateX(320px); }
 }
 
 /* ── Header ──────────────────────────────────────── */
 .trs-header {
   position: relative;
-  background: linear-gradient(180deg, rgba(22,27,34,0.95) 0%, rgba(13,17,23,0.6) 100%);
-  border-bottom: 1px solid #21262d;
+  background: linear-gradient(180deg, rgba(22,27,34,0.92) 0%, rgba(13,17,23,0.55) 100%);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
   padding: 26px 24px 20px;
   z-index: 2;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.3);
 }
 
 .trs-header::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 500px 200px at 50% 0%, rgba(88,166,255,0.08), transparent);
+  background:
+    radial-gradient(ellipse 650px 280px at 50% 0%, rgba(88,166,255,0.14), transparent),
+    radial-gradient(ellipse 350px 180px at 25% 100%, rgba(130, 60, 180, 0.07), transparent),
+    radial-gradient(ellipse 350px 180px at 75% 100%, rgba(50, 100, 200, 0.05), transparent);
   pointer-events: none;
 }
 
@@ -182,7 +250,7 @@ body::before {
   background: linear-gradient(90deg, #58a6ff, #7ee787);
   border-radius: 2px;
   transition: width 1s ease, background 0.4s;
-  box-shadow: 0 0 8px rgba(88, 166, 255, 0.5);
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.6), 0 0 30px rgba(88, 166, 255, 0.15);
 }
 
 /* Initial line draw animation */
@@ -367,12 +435,14 @@ body::before {
 }
 
 .trs-detail-card {
-  background: linear-gradient(135deg, #161b22 0%, #0f141a 100%);
-  border: 1px solid #30363d;
+  background: linear-gradient(135deg, rgba(22,27,34,0.82) 0%, rgba(15,20,26,0.88) 100%);
+  border: 1px solid rgba(48, 54, 61, 0.65);
   border-radius: 14px;
   padding: 22px 24px 18px;
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .trs-detail-accent {
@@ -570,12 +640,25 @@ body::before {
 /* ── Footer ──────────────────────────────────────── */
 .trs-footer {
   text-align: center;
-  padding: 24px;
+  padding: 40px 24px 28px;
   font-size: 11px;
   color: #484f58;
   border-top: 1px solid #21262d;
   position: relative;
   z-index: 1;
+  background: linear-gradient(180deg, transparent 0%, rgba(12, 35, 75, 0.12) 100%);
+}
+
+.trs-footer::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120%;
+  height: 80px;
+  background: radial-gradient(ellipse 60% 100% at 50% 100%, rgba(30, 80, 180, 0.06), transparent);
+  pointer-events: none;
 }
 
 /* ── Responsive ──────────────────────────────────── */
