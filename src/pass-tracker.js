@@ -30,6 +30,9 @@ let passes = [];
 let viewedIdx = -1;    // -1 = auto next
 let countdownTimer = null;
 let refreshTimer = null;
+let transitionsTimer = null;
+let allSatNextPassTimer = null;
+let allSatPillTimer = null;
 
 // Sound notifications
 const SOUND_KEY = 'pt-sound-enabled';
@@ -546,15 +549,29 @@ function init() {
   }, 60000);
 
   // Check AOS/LOS transitions every second (runs always, even if hero not showing pass)
-  setInterval(checkPassTransitions, 1000);
+  transitionsTimer = setInterval(checkPassTransitions, 1000);
 
   // All-satellite next-pass widget: full recompute every 5 min, countdown every 5 s
   updateAllSatNextPass();
-  setInterval(updateAllSatNextPass, 5 * 60 * 1000);
-  setInterval(renderAllSatPill, 5000);
+  allSatNextPassTimer = setInterval(updateAllSatNextPass, 5 * 60 * 1000);
+  allSatPillTimer = setInterval(renderAllSatPill, 5000);
 
   // One-shot IDB housekeeping — prune expired pass-cache entries
   idbCleanupExpired();
+
+  // Release timers/wake lock when the page unloads so reloading doesn't leak
+  window.addEventListener('beforeunload', cleanupOnUnload);
+  window.addEventListener('pagehide', cleanupOnUnload);
+}
+
+function cleanupOnUnload() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  if (transitionsTimer) { clearInterval(transitionsTimer); transitionsTimer = null; }
+  if (allSatNextPassTimer) { clearInterval(allSatNextPassTimer); allSatNextPassTimer = null; }
+  if (allSatPillTimer) { clearInterval(allSatPillTimer); allSatPillTimer = null; }
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  if (wakeLockSentinel) { try { wakeLockSentinel.release(); } catch {} wakeLockSentinel = null; }
+  if ('speechSynthesis' in window) { try { speechSynthesis.cancel(); } catch {} }
 }
 
 function loadFromMainApp() {
@@ -745,6 +762,8 @@ function buildUI() {
   const soundBtn = el('button', 'pt-back');
   soundBtn.id = 'pt-sound-btn';
   soundBtn.style.cursor = 'pointer';
+  soundBtn.setAttribute('aria-label', 'Ses bildirimlerini aç/kapat');
+  soundBtn.setAttribute('aria-pressed', String(soundEnabled));
   const renderSoundBtn = () => {
     soundBtn.innerHTML = soundEnabled
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7"/><path d="M19 5a9 9 0 010 14"/></svg> Ses Acik'
@@ -761,6 +780,7 @@ function buildUI() {
       ensureAudioCtx();
       playTestBeep();
     }
+    soundBtn.setAttribute('aria-pressed', String(soundEnabled));
     renderSoundBtn();
   });
   top.append(soundBtn);
@@ -768,6 +788,8 @@ function buildUI() {
   // Notification toggle
   const notifBtn = el('button', 'pt-back');
   notifBtn.style.cursor = 'pointer';
+  notifBtn.setAttribute('aria-label', 'Tarayıcı bildirimlerini aç/kapat');
+  notifBtn.setAttribute('aria-pressed', String(notifEnabled));
   const renderNotifBtn = () => {
     const supported = 'Notification' in window;
     notifBtn.innerHTML = notifEnabled
@@ -788,6 +810,7 @@ function buildUI() {
       notifEnabled = false;
     }
     try { localStorage.setItem(NOTIF_KEY, notifEnabled ? '1' : '0'); } catch {}
+    notifBtn.setAttribute('aria-pressed', String(notifEnabled));
     renderNotifBtn();
   });
   top.append(notifBtn);
@@ -795,6 +818,8 @@ function buildUI() {
   // TTS toggle
   const ttsBtn = el('button', 'pt-back');
   ttsBtn.style.cursor = 'pointer';
+  ttsBtn.setAttribute('aria-label', 'Sesli anonsları aç/kapat');
+  ttsBtn.setAttribute('aria-pressed', String(ttsEnabled));
   const renderTtsBtn = () => {
     const supported = 'speechSynthesis' in window;
     ttsBtn.innerHTML = ttsEnabled
@@ -811,6 +836,7 @@ function buildUI() {
     try { localStorage.setItem(TTS_KEY, ttsEnabled ? '1' : '0'); } catch {}
     if (ttsEnabled) speak('Sesli anons açık.');
     else if ('speechSynthesis' in window) speechSynthesis.cancel();
+    ttsBtn.setAttribute('aria-pressed', String(ttsEnabled));
     renderTtsBtn();
   });
   top.append(ttsBtn);
@@ -818,6 +844,8 @@ function buildUI() {
   // Wake lock toggle
   const wakeBtn = el('button', 'pt-back');
   wakeBtn.style.cursor = 'pointer';
+  wakeBtn.setAttribute('aria-label', 'Ekran uyku kilidini aç/kapat');
+  wakeBtn.setAttribute('aria-pressed', String(wakeEnabled));
   const renderWakeBtn = () => {
     const supported = 'wakeLock' in navigator;
     wakeBtn.innerHTML = wakeEnabled
@@ -839,6 +867,7 @@ function buildUI() {
       await releaseWakeLock();
     }
     try { localStorage.setItem(WAKE_KEY, wakeEnabled ? '1' : '0'); } catch {}
+    wakeBtn.setAttribute('aria-pressed', String(wakeEnabled));
     renderWakeBtn();
   });
   top.append(wakeBtn);

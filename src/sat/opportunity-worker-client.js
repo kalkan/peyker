@@ -19,9 +19,30 @@ const MAX_WORKERS = (() => {
 })();
 
 let workerSupported = true;
-const idle = [];
+const idle = [];          // [{ worker, idleSince }]
 const busy = new Set();
 const queue = [];
+
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;  // drop idle workers after 10 min
+let reapTimer = null;
+
+function scheduleReap() {
+  if (reapTimer) return;
+  if (typeof window === 'undefined') return;
+  reapTimer = setInterval(() => {
+    const now = Date.now();
+    for (let i = idle.length - 1; i >= 0; i--) {
+      if (now - idle[i].idleSince > IDLE_TIMEOUT_MS) {
+        try { idle[i].worker.terminate(); } catch {}
+        idle.splice(i, 1);
+      }
+    }
+    if (idle.length === 0 && busy.size === 0) {
+      clearInterval(reapTimer);
+      reapTimer = null;
+    }
+  }, 60_000);
+}
 
 function tryCreateWorker() {
   try {
@@ -34,7 +55,7 @@ function tryCreateWorker() {
 }
 
 function getWorker() {
-  if (idle.length) return idle.pop();
+  if (idle.length) return idle.pop().worker;
   if (idle.length + busy.size < MAX_WORKERS) {
     const w = tryCreateWorker();
     if (w) return w;
@@ -44,7 +65,8 @@ function getWorker() {
 
 function releaseWorker(w) {
   busy.delete(w);
-  idle.push(w);
+  idle.push({ worker: w, idleSince: Date.now() });
+  scheduleReap();
   pump();
 }
 

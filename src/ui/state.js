@@ -61,23 +61,25 @@ export function loadState() {
     if (typeof parsed.nextColorIndex === 'number') state.nextColorIndex = parsed.nextColorIndex;
 
     // Restore satellite list (just IDs, names, colors — TLE will be re-fetched)
-    if (Array.isArray(parsed.satellites)) {
-      state.satellites = parsed.satellites.map(s => ({
-        noradId: s.noradId,
-        name: s.name,
-        color: s.color,
-        colorIndex: s.colorIndex,
-        visible: s.visible !== false,
-        showLive: s.showLive || false,
-        frameWidth: s.frameWidth || 12,
-        frameHeight: s.frameHeight || 12,
-        rollDeg: s.rollDeg != null ? s.rollDeg : 5,
-        pitchDeg: s.pitchDeg || 0,
-        tle: null,
-        satrec: null,
-        metadata: null,
-        trackPoints: [],
-      }));
+    if (Array.isArray(parsed.satellites) && parsed.satellites.length > 0) {
+      state.satellites = parsed.satellites
+        .filter(s => s && typeof s.noradId === 'number')
+        .map(s => ({
+          noradId: s.noradId,
+          name: s.name,
+          color: s.color,
+          colorIndex: s.colorIndex,
+          visible: s.visible !== false,
+          showLive: s.showLive || false,
+          frameWidth: s.frameWidth || 12,
+          frameHeight: s.frameHeight || 12,
+          rollDeg: s.rollDeg != null ? s.rollDeg : 5,
+          pitchDeg: s.pitchDeg || 0,
+          tle: null,
+          satrec: null,
+          metadata: null,
+          trackPoints: [],
+        }));
     }
   } catch {
     console.warn('Failed to load saved state');

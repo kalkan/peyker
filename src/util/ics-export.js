@@ -19,6 +19,21 @@ function fmt(date) {
   return new Date(date).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
+function makeUid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${crypto.randomUUID()}@peyker`;
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}@peyker`;
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}@peyker`;
+}
+
 /**
  * Build an .ics document.
  *
@@ -46,7 +61,7 @@ export function buildIcs(events, opts = {}) {
     `X-WR-CALNAME:${escape(name)}`,
   ];
   for (const ev of events) {
-    const uid = ev.uid || `${Date.now()}-${Math.random().toString(36).slice(2)}@peyker`;
+    const uid = ev.uid || makeUid();
     const start = fmt(ev.start);
     const end = fmt(ev.end || new Date(new Date(ev.start).getTime() + 60_000));
     lines.push(

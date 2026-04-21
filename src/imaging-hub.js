@@ -1,41 +1,69 @@
 /**
- * Imaging Hub — Tabbed wrapper for 2D / 3D / GAG imaging tools.
+ * Imaging Hub — Dashboard landing page for all imaging planners.
  *
- * Each tool runs in its own iframe. Tabs lazy-load on first click and
- * stay mounted afterwards so user state (satellites, target, opportunities)
- * is preserved when switching tabs.
+ * Presents a card grid so users can pick a tool (Strip / Stereo / GAG /
+ * 3D) instead of browsing nested tabs. Cards link out to each planner.
  */
 
 import './styles/hub.css';
+import './styles/imaging-hub.css';
 
-const TABS = [
+const TOOLS = [
   {
     id: '2d',
-    label: '2D Planlayıcı',
-    src: './imaging-planner.html',
-    devSrc: './imaging-planner-src.html',
-    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="12" y1="3" x2="12" y2="7"/></svg>`,
+    title: '2D Planlayıcı',
+    subtitle: 'Tek hedef — harita üzerinde klasik planlama',
+    desc: 'Tek bir hedef noktası için geçiş fırsatlarını hesaplar. Leaflet tabanlı düz harita, roll/pitch kontrollü swath gösterimi, takvim dışa aktarımı.',
+    href: './imaging-planner.html',
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="12" y1="3" x2="12" y2="7"/></svg>`,
+    color: '#58a6ff',
+    bullets: ['Hedef noktası', 'Swath · Roll', 'ICS takvim'],
   },
   {
     id: '3d',
-    label: '3D Planlayıcı',
+    title: '3D Planlayıcı',
+    subtitle: 'Cesium küre üzerinde gerçek zamanlı 3B',
+    desc: 'Dünya küresi üzerinde yörünge izi ve roll konisini gerçek zamanlı görselleştirir. Fırsat zamanları + konum arama (Nominatim).',
+    href: './imaging-planner-3d.html',
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+    color: '#d2a8ff',
     badge: 'Beta',
-    src: './imaging-planner-3d.html',
-    devSrc: './imaging-planner-3d-src.html',
-    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+    bullets: ['3B küre', 'Roll konisi', 'Yer ismi arama'],
+  },
+  {
+    id: 'strip',
+    title: 'Şerit (Strip)',
+    subtitle: 'Push-broom tek geçiş şerit planlaması',
+    desc: 'Uzun koridor bölgeler için tek geçişte şerit çekimi. 2D planlayıcı ile aynı altyapı — tek fark hedef koridor seçimi.',
+    href: './imaging-planner.html#strip',
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/><path d="M7 4v16M17 4v16" opacity="0.4"/></svg>`,
+    color: '#7ee787',
+    bullets: ['Tek pas', 'Koridor', 'Yüksek çözünürlük'],
   },
   {
     id: 'gag',
-    label: 'Geniş Alan (GAG)',
+    title: 'Geniş Alan (GAG)',
+    subtitle: 'Çoklu geçiş ile alan kapsama',
+    desc: 'Büyük poligonu frame boyutunda karolara böler, her geçişte en çok yeni karoyu kapsayan şeridi seçerek %100 kapsamayı planlar.',
+    href: './gag.html',
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>`,
+    color: '#ffa657',
     badge: 'Beta',
-    src: './gag.html',
-    devSrc: './gag-src.html',
-    icon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>`,
+    bullets: ['Poligon karolama', 'Greedy şerit', 'XML dışa aktar'],
+  },
+  {
+    id: 'stereo',
+    title: 'Stereo',
+    subtitle: 'DEM için çift geçiş planlama',
+    desc: 'Aynı hedefin farklı roll açılarıyla iki ayrı geçişte çekimini planlar — Sayısal Yükseklik Modeli (DEM) üretimi için.',
+    href: null,
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l10-8 10 8M2 18l10-8 10 8"/></svg>`,
+    color: '#ff7b72',
+    badge: 'Yakında',
+    disabled: true,
+    bullets: ['Çift pas', 'Roll farkı', 'DEM'],
   },
 ];
-
-const mountedFrames = new Map(); // tab.id → HTMLIFrameElement
-let activeTabId = null;
 
 function init() {
   const app = document.getElementById('imaging-hub');
@@ -44,91 +72,82 @@ function init() {
   app.innerHTML = `
     <div class="hub-tabbar">
       <div class="hub-title">
-        <span class="hub-icon">
+        <span class="hub-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="12" y1="3" x2="12" y2="7"/>
           </svg>
         </span>
         Görüntüleme
       </div>
-      <div class="hub-tabs" id="hub-tabs"></div>
+      <div class="hub-spacer"></div>
+      <a href="./pass-tracker.html" class="hub-home" title="Geçiş Takibi">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Geçiş Takibi
+      </a>
+      <a href="./stations.html" class="hub-home" title="İstasyonlar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><circle cx="12" cy="12" r="2"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+        İstasyonlar
+      </a>
       <a href="./index.html" class="hub-home" title="Ana Sayfa">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         Ana
       </a>
     </div>
-    <div class="hub-stage" id="hub-stage">
-      <div class="hub-loading">Yükleniyor…</div>
-    </div>
+
+    <main class="img-hub">
+      <section class="img-hub-hero">
+        <h1>Görüntüleme Planlama</h1>
+        <p>Hedef alanına ve çekim moduna göre uygun planlama aracını seç.</p>
+      </section>
+
+      <section class="img-hub-grid" id="img-hub-grid" role="list"></section>
+
+      <section class="img-hub-foot">
+        <div class="img-hub-foot-title">İpucu</div>
+        <div class="img-hub-foot-text">
+          Uydular ana ekrandan veya geçiş takip ekranından eklenir, diğer planlayıcılar bu listeyi otomatik olarak paylaşır.
+        </div>
+      </section>
+    </main>
   `;
 
-  const tabsEl = document.getElementById('hub-tabs');
-  for (const tab of TABS) {
-    const btn = document.createElement('button');
-    btn.className = 'hub-tab';
-    btn.dataset.tabId = tab.id;
-    btn.innerHTML = `
-      ${tab.icon}
-      <span>${tab.label}</span>
-      ${tab.badge ? `<span class="hub-tab-badge">${tab.badge}</span>` : ''}
-    `;
-    btn.addEventListener('click', () => activateTab(tab.id));
-    tabsEl.append(btn);
+  const grid = document.getElementById('img-hub-grid');
+  for (const tool of TOOLS) {
+    grid.append(buildCard(tool));
   }
-
-  // Read initial tab from URL hash or default to first
-  const hashTab = (window.location.hash || '').replace('#', '');
-  const initialTab = TABS.find(t => t.id === hashTab) ? hashTab : TABS[0].id;
-  activateTab(initialTab);
-
-  window.addEventListener('hashchange', () => {
-    const h = (window.location.hash || '').replace('#', '');
-    if (TABS.find(t => t.id === h) && h !== activeTabId) activateTab(h);
-  });
 }
 
-function activateTab(tabId) {
-  const tab = TABS.find(t => t.id === tabId);
-  if (!tab) return;
-  activeTabId = tabId;
-
-  // Update tab UI
-  document.querySelectorAll('.hub-tab').forEach(b => {
-    b.classList.toggle('active', b.dataset.tabId === tabId);
-  });
-
-  // Update URL hash without reloading
-  if (window.location.hash !== `#${tabId}`) {
-    history.replaceState(null, '', `#${tabId}`);
-  }
-
-  // Hide all frames
-  const stage = document.getElementById('hub-stage');
-  stage.querySelector('.hub-loading')?.remove();
-  for (const frame of mountedFrames.values()) {
-    frame.classList.add('hidden');
-  }
-
-  // Mount or reveal frame
-  let frame = mountedFrames.get(tabId);
-  if (!frame) {
-    frame = document.createElement('iframe');
-    frame.className = 'hub-frame';
-    frame.src = pickSrc(tab);
-    frame.title = tab.label;
-    stage.append(frame);
-    mountedFrames.set(tabId, frame);
+function buildCard(tool) {
+  const card = document.createElement(tool.disabled ? 'div' : 'a');
+  card.className = 'img-card' + (tool.disabled ? ' disabled' : '');
+  card.setAttribute('role', 'listitem');
+  if (!tool.disabled) {
+    card.href = tool.href;
+    card.setAttribute('aria-label', `${tool.title} — ${tool.subtitle}`);
   } else {
-    frame.classList.remove('hidden');
+    card.setAttribute('aria-disabled', 'true');
   }
-}
+  card.style.setProperty('--card-color', tool.color);
 
-/** Pick the right URL depending on whether we're in dev or prod. */
-function pickSrc(tab) {
-  const here = window.location.pathname;
-  // In dev mode, pages are served as *-src.html
-  const inDev = here.endsWith('-src.html') || here.includes('/src/');
-  return inDev ? tab.devSrc : tab.src;
+  const bullets = (tool.bullets || []).map(b => `<li>${b}</li>`).join('');
+
+  card.innerHTML = `
+    <div class="img-card-head">
+      <div class="img-card-icon" aria-hidden="true">${tool.icon}</div>
+      ${tool.badge ? `<span class="img-card-badge">${tool.badge}</span>` : ''}
+    </div>
+    <div class="img-card-body">
+      <h2 class="img-card-title">${tool.title}</h2>
+      <div class="img-card-sub">${tool.subtitle}</div>
+      <p class="img-card-desc">${tool.desc}</p>
+      <ul class="img-card-bullets">${bullets}</ul>
+    </div>
+    <div class="img-card-cta">
+      ${tool.disabled ? 'Hazırlanıyor' : 'Aç'}
+      ${tool.disabled ? '' : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>`}
+    </div>
+  `;
+  return card;
 }
 
 if (document.readyState === 'loading') {
