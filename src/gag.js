@@ -447,7 +447,107 @@ function buildResultsSection() {
     sec.append(card);
   }
 
+  // XML Export button
+  const exportBtn = el('button', 'gag-btn gag-export-btn');
+  exportBtn.textContent = 'XML Dışa Aktar';
+  exportBtn.addEventListener('click', downloadXML);
+  sec.append(exportBtn);
+
   return sec;
+}
+
+// ───────── XML Export ─────────
+function generateXML() {
+  const preset = getPreset(presetId);
+  const sat = satellites[selectedSatIdx];
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += '<GAGPlan>\n';
+
+  // Metadata
+  xml += '  <Metadata>\n';
+  xml += `    <GeneratedAt>${new Date().toISOString()}</GeneratedAt>\n`;
+  if (sat) {
+    xml += `    <Satellite noradId="${sat.noradId}">${escXml(sat.name)}</Satellite>\n`;
+  }
+  xml += `    <Sensor preset="${escXml(presetId)}" swathKm="${preset.swathKm}" frameHeightKm="${preset.frameHeightKm}" />\n`;
+  xml += `    <MaxRollDeg>${maxRollDeg}</MaxRollDeg>\n`;
+  xml += `    <SearchDays>${searchDays}</SearchDays>\n`;
+  xml += '  </Metadata>\n';
+
+  // Polygon
+  xml += '  <Polygon>\n';
+  if (polygonCoords) {
+    for (const [lat, lon] of polygonCoords) {
+      xml += `    <Vertex lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}" />\n`;
+    }
+  }
+  xml += '  </Polygon>\n';
+
+  // Coverage summary
+  if (completionInfo) {
+    xml += '  <Coverage>\n';
+    xml += `    <TotalTiles>${completionInfo.totalTiles}</TotalTiles>\n`;
+    xml += `    <CoveredTiles>${completionInfo.coveredTiles}</CoveredTiles>\n`;
+    xml += `    <Percentage>${(completionInfo.coveredTiles / completionInfo.totalTiles * 100).toFixed(1)}</Percentage>\n`;
+    xml += `    <PassCount>${completionInfo.passCount}</PassCount>\n`;
+    if (completionInfo.completionTime) {
+      xml += `    <CompletionTime>${completionInfo.completionTime.toISOString()}</CompletionTime>\n`;
+    }
+    xml += '  </Coverage>\n';
+  }
+
+  // Tiles
+  xml += `  <Tiles count="${tiles.length}">\n`;
+  for (const t of tiles) {
+    xml += `    <Tile id="${t.id}" lat="${t.lat.toFixed(6)}" lon="${t.lon.toFixed(6)}" sizeKm="${t.sizeKm}" />\n`;
+  }
+  xml += '  </Tiles>\n';
+
+  // Passes
+  xml += `  <Passes count="${passes.length}">\n`;
+  for (let i = 0; i < passes.length; i++) {
+    const p = passes[i];
+    xml += `    <Pass index="${i + 1}">\n`;
+    xml += `      <Time>${p.time.toISOString()}</Time>\n`;
+    xml += `      <AltitudeKm>${p.altKm.toFixed(1)}</AltitudeKm>\n`;
+    xml += `      <SunElevation>${p.sunElev.toFixed(1)}</SunElevation>\n`;
+    xml += `      <RollDeg min="${p.minRollDeg.toFixed(2)}" max="${p.maxRollDeg.toFixed(2)}" />\n`;
+    xml += `      <StripOffsetKm>${p.stripOffsetKm.toFixed(2)}</StripOffsetKm>\n`;
+    xml += `      <CumulativeCoverage>${(p.cumCoverage * 100).toFixed(1)}</CumulativeCoverage>\n`;
+    xml += `      <NewTiles count="${p.newTileIds.length}">${p.newTileIds.join(',')}</NewTiles>\n`;
+    xml += `      <CoveredTiles count="${p.coveredTileIds.length}">${p.coveredTileIds.join(',')}</CoveredTiles>\n`;
+    if (p.track && p.track.length > 0) {
+      xml += `      <GroundTrack points="${p.track.length}">\n`;
+      for (const pt of p.track) {
+        xml += `        <Point lat="${pt.lat.toFixed(6)}" lon="${pt.lon.toFixed(6)}" alt="${pt.alt.toFixed(1)}" time="${pt.time.toISOString()}" />\n`;
+      }
+      xml += '      </GroundTrack>\n';
+    }
+    xml += '    </Pass>\n';
+  }
+  xml += '  </Passes>\n';
+
+  xml += '</GAGPlan>\n';
+  return xml;
+}
+
+function escXml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function downloadXML() {
+  const xml = generateXML();
+  const blob = new Blob([xml], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const sat = satellites[selectedSatIdx];
+  const name = sat ? sat.name.replace(/[^a-zA-Z0-9_-]/g, '_') : 'plan';
+  a.href = url;
+  a.download = `GAG_${name}_${new Date().toISOString().slice(0, 10)}.xml`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('XML dışa aktarıldı', 'success');
 }
 
 // ───────── Analysis ─────────

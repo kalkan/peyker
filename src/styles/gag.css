@@ -270,6 +270,18 @@ body {
   border-radius: 2px;
 }
 
+/* Export button */
+.gag-export-btn {
+  width: 100%;
+  margin-top: 12px;
+  background: rgba(126,231,135,0.12);
+  color: #7ee787;
+  border-color: rgba(126,231,135,0.3);
+}
+.gag-export-btn:hover {
+  background: rgba(126,231,135,0.22);
+}
+
 /* Progress */
 .gag-progress {
   margin-top: 10px;
