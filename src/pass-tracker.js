@@ -126,6 +126,7 @@ function computePassVisibility(satrec, gs, pass) {
 function enrichPasses(satrec, gs, passList) {
   for (const p of passList) {
     p.visible = computePassVisibility(satrec, gs, p);
+    p.sunElev = gs ? sunElevation(p.tca, gs.lat, gs.lon) : null;
     const q = computePassScore(p);
     p.score = q.score;
     p.stars = q.stars;
@@ -1534,11 +1535,19 @@ function renderList() {
 
       const stars = p.stars != null ? '★'.repeat(p.stars) + '☆'.repeat(5 - p.stars) : '';
       const visIcon = p.visible ? '<span class="pt-vis-icon" title="Görsel olarak izlenebilir">👁</span>' : '';
+
+      const sunVal = p.sunElev != null ? p.sunElev.toFixed(1) : '—';
+      const sunCls = p.sunElev == null ? 'pt-sun-none'
+        : p.sunElev >= 50 ? 'pt-sun-high'
+        : p.sunElev >= 20 ? 'pt-sun-mid'
+        : p.sunElev >= 5 ? 'pt-sun-low' : 'pt-sun-dark';
+
       row.innerHTML = `
         <span class="pt-pass-cell">${fmtTime(p.aos)}</span>
         <span class="pt-pass-cell">${fmtTime(p.los)}</span>
         <span class="pt-pass-cell">${dm}m${ds > 0 ? ds + 's' : ''}</span>
         <span class="pt-el-badge ${elCls}">${p.maxEl.toFixed(1)}°</span>
+        <span class="pt-sun-badge ${sunCls}">☀ ${sunVal}°</span>
         <span class="pt-az-cell">${fmtAzShort(p.azAos)}→${fmtAzShort(p.azLos)} ${visIcon}<span class="pt-stars">${stars}</span></span>
       `;
 

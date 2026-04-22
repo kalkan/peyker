@@ -510,7 +510,7 @@ body {
 
 .pt-pass-row {
   display: grid;
-  grid-template-columns: 126px 126px 96px 102px 1fr;
+  grid-template-columns: 126px 126px 96px 102px 90px 1fr;
   gap: 16px;
   align-items: center;
   padding: 18px 20px;
@@ -553,6 +553,21 @@ body {
 .pt-el-mid  { background: rgba(88,166,255,0.15); color: var(--pt-accent); }
 .pt-el-low  { background: rgba(210,153,34,0.15); color: var(--pt-gold); }
 .pt-el-vlow { background: rgba(139,148,158,0.1);  color: var(--pt-dim); }
+
+.pt-sun-badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: monospace;
+  white-space: nowrap;
+}
+.pt-sun-high { background: rgba(255,180,40,0.15); color: #ffb028; }
+.pt-sun-mid  { background: rgba(240,160,50,0.12); color: #d9a030; }
+.pt-sun-low  { background: rgba(200,140,60,0.10); color: #b0884a; }
+.pt-sun-dark { background: rgba(139,148,158,0.08); color: var(--pt-dim); }
+.pt-sun-none { background: transparent; color: var(--pt-dim); }
 
 .pt-az-cell {
   font-size: 22px;
@@ -681,7 +696,7 @@ body {
   .pt-countdown { font-size: 54px; }
   .pt-detail-value { font-size: 26px; }
   .pt-time-value { font-size: 21px; }
-  .pt-pass-row { font-size: 22px; grid-template-columns: 108px 108px 84px 90px 1fr; }
+  .pt-pass-row { font-size: 22px; grid-template-columns: 108px 108px 84px 90px 80px 1fr; }
   .pt-pass-cell { font-size: 22px; }
   .pt-el-badge { font-size: 20px; }
   .pt-az-cell { font-size: 19px; }
