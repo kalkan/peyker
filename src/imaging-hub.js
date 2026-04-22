@@ -51,18 +51,6 @@ const TOOLS = [
     badge: 'Beta',
     bullets: ['Poligon karolama', 'Greedy şerit', 'XML dışa aktar'],
   },
-  {
-    id: 'stereo',
-    title: 'Stereo',
-    subtitle: 'DEM için çift geçiş planlama',
-    desc: 'Aynı hedefin farklı roll açılarıyla iki ayrı geçişte çekimini planlar — Sayısal Yükseklik Modeli (DEM) üretimi için.',
-    href: null,
-    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l10-8 10 8M2 18l10-8 10 8"/></svg>`,
-    color: '#ff7b72',
-    badge: 'Yakında',
-    disabled: true,
-    bullets: ['Çift pas', 'Roll farkı', 'DEM'],
-  },
 ];
 
 function init() {
