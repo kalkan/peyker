@@ -23,6 +23,7 @@ import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js'
 import { findOpportunities, DEFAULT_OPPORTUNITY_CONFIG } from './sat/opportunity.js';
 import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
 import { computeOpportunityScore } from './sat/opportunity-score.js';
+import { fetchCloudForecast, enrichWithCloud } from './util/cloud-forecast.js';
 import { getColor } from './sat/presets.js';
 
 /* global Cesium */
@@ -736,6 +737,7 @@ async function runAnalysis() {
     SEARCH_HORIZON_DAYS: 7,
   };
 
+  const cloudPromise = fetchCloudForecast(targetLat, targetLon, 7);
   const totalSats = satellites.length;
 
   for (let i = 0; i < satellites.length; i++) {
@@ -758,6 +760,10 @@ async function runAnalysis() {
   }
 
   opportunities.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+  const forecast = await cloudPromise;
+  if (forecast) enrichWithCloud(opportunities, forecast);
+
   running = false;
   progress = 1;
 
@@ -1379,6 +1385,7 @@ function updateOppStrip() {
       <div class="ip3-opp-meta">
         <span>Güneş ${o.sunElevation.toFixed(0)}°</span>
         <span>Alt ${o.altKm ? o.altKm.toFixed(0) + ' km' : ''}</span>
+        ${o.cloudCover ? `<span class="ip3-cloud ${cloudClass3d(o.cloudCover.total)}" title="Bulut: ${o.cloudCover.total}%">☁ ${o.cloudCover.total}%</span>` : ''}
       </div>
       <div class="ip3-opp-sat" style="color:${o.sat.color};">● ${esc(o.sat.name)}</div>
     `;
@@ -1395,12 +1402,20 @@ function oppDescription(o, idx) {
       <div>Roll: ${o.rollDeg.toFixed(1)}°</div>
       <div>Off-Nadir: ${o.offNadirDeg.toFixed(1)}°</div>
       <div>Güneş: ${o.sunElevation.toFixed(1)}°</div>
+      ${o.cloudCover ? `<div>Bulut: ${o.cloudCover.total}%</div>` : ''}
       <div>Puan: ${o.score.toFixed(0)}/100 (${o.stars}/5)</div>
     </div>
   `;
 }
 
 // ───────── Helpers ─────────
+function cloudClass3d(pct) {
+  if (pct <= 20) return 'cloud-clear';
+  if (pct <= 50) return 'cloud-part';
+  if (pct <= 80) return 'cloud-cloudy';
+  return 'cloud-over';
+}
+
 function el(tag, cls) {
   const x = document.createElement(tag);
   if (cls) x.className = cls;

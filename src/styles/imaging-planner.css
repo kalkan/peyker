@@ -533,6 +533,17 @@ body {
   color: var(--ip-sun);
 }
 
+.ip-opp-cloud {
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.cloud-clear  { color: #7ee787; background: rgba(126,231,135,0.1); }
+.cloud-part   { color: #d29922; background: rgba(210,153,34,0.1); }
+.cloud-cloudy { color: #f0883e; background: rgba(240,136,62,0.1); }
+.cloud-over   { color: #f85149; background: rgba(248,81,73,0.1); }
+
 .ip-opp-noops {
   font-size: 11px;
   color: var(--ip-text-dim);

@@ -419,6 +419,17 @@ body {
   flex-wrap: wrap;
   gap: 8px;
 }
+.ip3-cloud {
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.ip3-cloud.cloud-clear  { color: #7ee787; }
+.ip3-cloud.cloud-part   { color: #d29922; }
+.ip3-cloud.cloud-cloudy { color: #f0883e; }
+.ip3-cloud.cloud-over   { color: #f85149; }
+
 .ip3-opp-sat {
   font-size: 12px;
   color: #c9d1d9;

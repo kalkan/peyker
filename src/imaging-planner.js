@@ -26,6 +26,7 @@ import { analyzeAllInPool } from './sat/opportunity-worker-client.js';
 import { describeTleAge } from './sat/tle-meta.js';
 import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
 import { buildIcs, downloadIcs } from './util/ics-export.js';
+import { fetchCloudForecast, enrichWithCloud } from './util/cloud-forecast.js';
 import { installKeyboardShortcuts, bind, openHelp } from './util/keyboard-shortcuts.js';
 import './styles/shared.css';
 
@@ -55,9 +56,10 @@ let maxRollDeg = 5;
 let horizonDays = 7;
 let pitchDeg = 0;
 let presetId = 'custom';
-let sortBy = 'time';          // 'time' | 'score' | 'roll' | 'sun'
+let sortBy = 'time';          // 'time' | 'score' | 'roll' | 'sun' | 'cloud'
 let filterMinSun = -2;        // sun elevation threshold for displayed opps
 let filterRollPct = 100;      // % of maxRollDeg accepted (display filter)
+let filterMaxCloud = 100;     // max cloud cover % (display filter)
 let timezone = 'Europe/Istanbul';
 
 const TIMEZONES = [
@@ -76,6 +78,7 @@ function loadPrefs() {
     if (typeof p.sortBy === 'string') sortBy = p.sortBy;
     if (typeof p.filterMinSun === 'number') filterMinSun = p.filterMinSun;
     if (typeof p.filterRollPct === 'number') filterRollPct = p.filterRollPct;
+    if (typeof p.filterMaxCloud === 'number') filterMaxCloud = p.filterMaxCloud;
     if (typeof p.timezone === 'string') timezone = p.timezone;
   } catch {}
 }
@@ -83,7 +86,7 @@ function loadPrefs() {
 function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
-      maxRollDeg, horizonDays, pitchDeg, presetId, sortBy, filterMinSun, filterRollPct, timezone,
+      maxRollDeg, horizonDays, pitchDeg, presetId, sortBy, filterMinSun, filterRollPct, filterMaxCloud, timezone,
     }));
   } catch {}
 }
@@ -339,6 +342,8 @@ async function runAnalysis(forceRefresh = false) {
   }
   renderRightContent();
 
+  const cloudPromise = fetchCloudForecast(targetLat, targetLon, horizonDays);
+
   analysisAbort = new AbortController();
   try {
     if (toCompute.length > 0) {
@@ -378,6 +383,11 @@ async function runAnalysis(forceRefresh = false) {
           return 0;
         });
       analysisResults = ordered;
+
+      const forecast = await cloudPromise;
+      if (forecast) {
+        for (const r of analysisResults) enrichWithCloud(r.opportunities, forecast);
+      }
     }
   } catch (err) {
     if (err && err.name !== 'AbortError' && myGen === analysisGeneration) {
@@ -804,6 +814,21 @@ function buildSettingsSection() {
   filterField.append(sunSlider);
   sec.append(filterField);
 
+  // Cloud cover filter
+  const cloudField = el('div', 'ip-field');
+  const cloudLbl = el('label');
+  cloudLbl.innerHTML = `Maks bulutluluk: <span id="ip-cloud-val">${filterMaxCloud}%</span>`;
+  cloudField.append(cloudLbl);
+  const cloudSlider = el('input', 'ip-slider');
+  cloudSlider.type = 'range'; cloudSlider.min = 0; cloudSlider.max = 100; cloudSlider.step = 5; cloudSlider.value = filterMaxCloud;
+  cloudSlider.addEventListener('input', () => {
+    filterMaxCloud = parseInt(cloudSlider.value);
+    document.getElementById('ip-cloud-val').textContent = `${filterMaxCloud}%`;
+  });
+  cloudSlider.addEventListener('change', () => { savePrefs(); renderRightContent(); });
+  cloudField.append(cloudSlider);
+  sec.append(cloudField);
+
   // Sort + timezone row
   const r2 = el('div', 'ip-field-row');
   const sortField = el('div', 'ip-field');
@@ -811,7 +836,7 @@ function buildSettingsSection() {
   sortLbl.textContent = 'Sıralama';
   sortField.append(sortLbl);
   const sortSel = el('select', 'ip-select');
-  for (const [val, label] of [['time', 'Zamana göre'], ['score', 'Kaliteye göre'], ['roll', 'Roll (artan)'], ['sun', 'Güneş (azalan)']]) {
+  for (const [val, label] of [['time', 'Zamana göre'], ['score', 'Kaliteye göre'], ['roll', 'Roll (artan)'], ['sun', 'Güneş (azalan)'], ['cloud', 'Bulut (artan)']]) {
     const o = document.createElement('option');
     o.value = val; o.textContent = label;
     if (val === sortBy) o.selected = true;
@@ -988,7 +1013,11 @@ function buildRightContent() {
 }
 
 function applyFilters(opps) {
-  return opps.filter(o => o.sunElevation >= filterMinSun && Math.abs(o.offNadirDeg) <= maxRollDeg * (filterRollPct / 100));
+  return opps.filter(o =>
+    o.sunElevation >= filterMinSun &&
+    Math.abs(o.offNadirDeg) <= maxRollDeg * (filterRollPct / 100) &&
+    (filterMaxCloud >= 100 || !o.cloudCover || o.cloudCover.total <= filterMaxCloud)
+  );
 }
 
 function sortOpps(opps) {
@@ -996,6 +1025,7 @@ function sortOpps(opps) {
   if (sortBy === 'time') arr.sort((a, b) => a.time - b.time);
   else if (sortBy === 'roll') arr.sort((a, b) => Math.abs(a.offNadirDeg) - Math.abs(b.offNadirDeg));
   else if (sortBy === 'sun') arr.sort((a, b) => b.sunElevation - a.sunElevation);
+  else if (sortBy === 'cloud') arr.sort((a, b) => (a.cloudCover?.total ?? 999) - (b.cloudCover?.total ?? 999));
   else if (sortBy === 'score') {
     arr.forEach(o => { if (!o._score) o._score = computeOpportunityScore(o, { maxRollDeg }); });
     arr.sort((a, b) => b._score.score - a._score.score);
@@ -1151,6 +1181,7 @@ function buildOppCard(opp, satResult) {
       <span>Alt: <strong>${opp.altKm.toFixed(0)} km</strong></span>
       <span>Mesafe: <strong>${opp.groundDistKm.toFixed(0)} km</strong></span>
       <span class="ip-opp-sun" title="Güneş yükseklik açısı">☀ ${opp.sunElevation.toFixed(1)}°</span>
+      ${opp.cloudCover ? `<span class="ip-opp-cloud ${cloudClass(opp.cloudCover.total)}" title="Bulutluluk tahmini (toplam / alçak / orta / yüksek): ${opp.cloudCover.total}% / ${opp.cloudCover.low}% / ${opp.cloudCover.mid}% / ${opp.cloudCover.high}%">☁ ${opp.cloudCover.total}%</span>` : ''}
     </div>`;
 
   card.addEventListener('click', () => {
@@ -1173,7 +1204,7 @@ function tzLabel() {
 function exportCsv() {
   if (!analysisResults) { toast('Önce analiz çalıştırın', 'error'); return; }
   const tz = tzLabel();
-  const header = `Satellite,NORAD ID,Date (${tz}),Time (${tz}),Roll (deg),Off-Nadir (deg),Score,Altitude (km),Ground Dist (km),Sun Elev (deg),Sub-Sat Lat,Sub-Sat Lon,Target Lat,Target Lon`;
+  const header = `Satellite,NORAD ID,Date (${tz}),Time (${tz}),Roll (deg),Off-Nadir (deg),Score,Altitude (km),Ground Dist (km),Sun Elev (deg),Cloud Cover (%),Target Lat,Target Lon`;
   const rows = [];
   for (const r of analysisResults) {
     for (const o of applyFilters(r.opportunities)) {
@@ -1182,7 +1213,7 @@ function exportCsv() {
         `"${r.name}"`, r.noradId, fmtDate(o.time), fmtTime(o.time),
         o.rollDeg.toFixed(2), o.offNadirDeg.toFixed(2), o._score.score.toFixed(0),
         o.altKm.toFixed(0), o.groundDistKm.toFixed(0), o.sunElevation.toFixed(1),
-        o.subSatLat.toFixed(4), o.subSatLon.toFixed(4),
+        o.cloudCover ? o.cloudCover.total : '',
         targetLat.toFixed(5), targetLon.toFixed(5),
       ].join(','));
     }
@@ -1214,6 +1245,7 @@ function exportIcs() {
         `Pitch: ${pitchDeg.toFixed(1)}°`,
         `Yükseklik: ${o.altKm.toFixed(0)} km, mesafe ${o.groundDistKm.toFixed(0)} km`,
         `Güneş: ${o.sunElevation.toFixed(1)}°`,
+        o.cloudCover ? `Bulut: ${o.cloudCover.total}% (alçak ${o.cloudCover.low}% / orta ${o.cloudCover.mid}% / yüksek ${o.cloudCover.high}%)` : '',
         `Sensör: ${getPreset(presetId).name}`,
         `Skor: ${o._score.score.toFixed(0)}/100 (${o._score.stars}★)`,
       ].join('\n');
@@ -1234,6 +1266,13 @@ function exportIcs() {
 }
 
 /* ───── Helpers ───── */
+
+function cloudClass(pct) {
+  if (pct <= 20) return 'cloud-clear';
+  if (pct <= 50) return 'cloud-part';
+  if (pct <= 80) return 'cloud-cloudy';
+  return 'cloud-over';
+}
 
 function el(tag, cls) {
   const e = document.createElement(tag);
