@@ -740,7 +740,7 @@ function prepareScene() {
           },
         });
 
-        // Expanding ring at the target during capture
+        // Pulsing ring at the target during capture
         viewer.entities.add({
           id: `cap-ring-${sat.noradId}-${ci}`,
           availability,
@@ -748,9 +748,53 @@ function prepareScene() {
           ellipse: {
             semiMajorAxis: 25000,
             semiMinorAxis: 25000,
-            material: satColor.withAlpha(0.35),
+            material: new Cesium.ColorMaterialProperty(
+              new Cesium.CallbackProperty(() => {
+                const sec = Cesium.JulianDate.secondsDifference(
+                  viewer.clock.currentTime,
+                  Cesium.JulianDate.fromDate(cap.start)
+                );
+                const alpha = 0.12 + 0.28 * (0.5 + 0.5 * Math.sin(sec * 4));
+                return satColor.withAlpha(alpha);
+              }, false)
+            ),
             outline: true,
             outlineColor: satColor,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          },
+        });
+
+        // Flash at closest approach (midpoint of capture window)
+        const capMidMs = (cap.start.getTime() + cap.end.getTime()) / 2;
+        const capMidJ = Cesium.JulianDate.fromDate(new Date(capMidMs));
+        const flashSec = 2;
+        const flashAvail = new Cesium.TimeIntervalCollection([
+          new Cesium.TimeInterval({
+            start: Cesium.JulianDate.fromDate(new Date(capMidMs - flashSec * 1000)),
+            stop: Cesium.JulianDate.fromDate(new Date(capMidMs + flashSec * 1000)),
+          }),
+        ]);
+
+        viewer.entities.add({
+          id: `cap-flash-${sat.noradId}-${ci}`,
+          availability: flashAvail,
+          position: tgtPos,
+          ellipse: {
+            semiMajorAxis: new Cesium.CallbackProperty(() => {
+              const d = Math.abs(Cesium.JulianDate.secondsDifference(viewer.clock.currentTime, capMidJ));
+              return 10000 + d * 18000;
+            }, false),
+            semiMinorAxis: new Cesium.CallbackProperty(() => {
+              const d = Math.abs(Cesium.JulianDate.secondsDifference(viewer.clock.currentTime, capMidJ));
+              return 10000 + d * 18000;
+            }, false),
+            material: new Cesium.ColorMaterialProperty(
+              new Cesium.CallbackProperty(() => {
+                const d = Math.abs(Cesium.JulianDate.secondsDifference(viewer.clock.currentTime, capMidJ));
+                const alpha = Math.max(0, 0.55 * (1 - d / flashSec));
+                return Cesium.Color.WHITE.withAlpha(alpha);
+              }, false)
+            ),
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
