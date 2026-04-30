@@ -1204,7 +1204,7 @@ function tzLabel() {
 function exportCsv() {
   if (!analysisResults) { toast('Önce analiz çalıştırın', 'error'); return; }
   const tz = tzLabel();
-  const header = `Satellite,NORAD ID,Date (${tz}),Time (${tz}),Roll (deg),Off-Nadir (deg),Score,Altitude (km),Ground Dist (km),Sun Elev (deg),Cloud Cover (%),Target Lat,Target Lon`;
+  const header = `Satellite,NORAD ID,Date (${tz}),Time (${tz}),Roll (deg),Off-Nadir (deg),Score,Altitude (km),Ground Dist (km),Sun Elev (deg),Cloud Cover (%),Sub-Sat Lat,Sub-Sat Lon,Target Lat,Target Lon`;
   const rows = [];
   for (const r of analysisResults) {
     for (const o of applyFilters(r.opportunities)) {
@@ -1214,6 +1214,7 @@ function exportCsv() {
         o.rollDeg.toFixed(2), o.offNadirDeg.toFixed(2), o._score.score.toFixed(0),
         o.altKm.toFixed(0), o.groundDistKm.toFixed(0), o.sunElevation.toFixed(1),
         o.cloudCover ? o.cloudCover.total : '',
+        o.subSatLat.toFixed(4), o.subSatLon.toFixed(4),
         targetLat.toFixed(5), targetLon.toFixed(5),
       ].join(','));
     }

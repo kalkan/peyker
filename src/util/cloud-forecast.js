@@ -50,7 +50,7 @@ export async function fetchCloudForecast(lat, lon, days = 7) {
  * Returns { total, low, mid, high } (percentages) or null.
  */
 export function getCloudAtTime(forecast, date) {
-  if (!forecast || !forecast.times) return null;
+  if (!forecast || !forecast.times || forecast.times.length === 0) return null;
   const target = date.getTime();
   let bestIdx = 0;
   let bestDiff = Infinity;

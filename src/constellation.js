@@ -624,6 +624,10 @@ function showToast(message, type = 'info') {
   setTimeout(() => t.remove(), 3000);
 }
 
+window.addEventListener('beforeunload', () => {
+  if (tickInterval) clearInterval(tickInterval);
+});
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

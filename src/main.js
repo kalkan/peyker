@@ -880,7 +880,7 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   // Time label popup
   const tp = sat.trackPoints[idx];
   const timeStr = tp.time.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  centerMarker.bindTooltip(`${sat.name}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}° Pitch: ${pitch}°`, {
+  centerMarker.bindTooltip(`${escapeHtml(sat.name)}<br>${timeStr}<br>Alt: ${tp.alt.toFixed(0)} km<br>Roll: ${roll}° Pitch: ${pitch}°`, {
     permanent: true,
     direction: 'top',
     className: 'sensor-cursor-tooltip',
@@ -892,7 +892,7 @@ function renderTimeCursorFootprint(noradId, trackIndex) {
   const plannerUrl = `./imaging-planner.html?target=${centerLat.toFixed(6)},${centerLon.toFixed(6)}&name=${encodeURIComponent(sat.name + ' footprint')}`;
   const popupHtml = `
     <div style="font-size:12px;">
-      <b>${sat.name}</b><br>
+      <b>${escapeHtml(sat.name)}</b><br>
       ${timeStr}<br>
       Lat: ${centerLat.toFixed(6)}°<br>
       Lon: ${centerLon.toFixed(6)}°<br>

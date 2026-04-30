@@ -37,6 +37,7 @@ const SPEED_OPTIONS = [1, 10, 60, 300, 900, 3600];
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordingDownloadUrl = null;
+let recordingStream = null;
 let recording = false;
 let recordStartMs = 0;
 
@@ -835,7 +836,8 @@ function startRecording() {
     recordingDownloadUrl = null;
   }
 
-  const stream = canvas.captureStream(30);
+  recordingStream = canvas.captureStream(30);
+  const stream = recordingStream;
   const types = [
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
@@ -861,6 +863,10 @@ function startRecording() {
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
   };
   mediaRecorder.onstop = () => {
+    if (recordingStream) {
+      recordingStream.getTracks().forEach(t => t.stop());
+      recordingStream = null;
+    }
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
     recordingDownloadUrl = URL.createObjectURL(blob);
     recording = false;

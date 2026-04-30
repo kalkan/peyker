@@ -328,6 +328,7 @@ function draw3DAntenna(data) {
   const canvas = document.getElementById('ant-3d');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   const W = canvas.width;
   const H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -555,6 +556,7 @@ function drawPolarPlot(currentData) {
   const canvas = document.getElementById('ant-polar');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   const W = canvas.width;
   const H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -733,6 +735,10 @@ function fmtDateTime(date) {
     hour12: false,
   });
 }
+
+window.addEventListener('beforeunload', () => {
+  if (animTimer) { clearInterval(animTimer); animTimer = null; }
+});
 
 // ===== Start =====
 if (document.readyState === 'loading') {
