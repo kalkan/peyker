@@ -1,0 +1,1510 @@
+/**
+ * Imaging Planner 3D (Beta) — Cesium-based 3D visualization of
+ * imaging opportunities.
+ *
+ * Reuses the existing opportunity-finding engine (propagate.js,
+ * opportunity.js, sensor-presets, opportunity-score) but renders
+ * everything on a 3D globe with:
+ *   - target pin
+ *   - per-satellite orbital ground tracks
+ *   - opportunity markers at sub-satellite points
+ *   - selected opportunity: 3D satellite, sensor footprint polygon,
+ *     satellite-to-target pointing line, animated time scrub via
+ *     Cesium's built-in clock
+ *
+ * Cesium is loaded from CDN (declared in imaging-planner-3d-src.html)
+ * so the main bundle stays small. This is a beta companion to the 2D
+ * planner; the 2D version remains the primary tool.
+ */
+
+import './styles/imaging-planner-3d.css';
+import { fetchTLE } from './sat/fetch.js';
+import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js';
+import { findOpportunities, DEFAULT_OPPORTUNITY_CONFIG } from './sat/opportunity.js';
+import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
+import { computeOpportunityScore } from './sat/opportunity-score.js';
+import { fetchCloudForecast, enrichWithCloud } from './util/cloud-forecast.js';
+import { getColor } from './sat/presets.js';
+
+/* global Cesium */
+
+// ───────── State ─────────
+let viewer = null;
+let targetLat = null, targetLon = null, targetName = null;
+let satellites = []; // { noradId, name, color, satrec, tle }
+let presetId = 'custom';
+let rollDeg = 20;
+let pitchDeg = 0;
+let opportunities = []; // flattened across all satellites
+let selectedOppIdx = -1;
+let running = false;
+let progress = 0;
+
+// Collapsible section open state (persists across re-renders)
+const sectionOpen = {
+  pitch: false,
+  stereo: false,
+  strip: false,
+};
+
+// Stereo planning state (same-pass stereo via forward/backward pitch)
+let stereoBH = 1.2;
+let stereoActive = false;
+
+// Strip capture state
+let stripDurationSec = 10;
+let stripActive = false;
+
+// Cesium entities we manage
+let targetEntity = null;
+const oppMarkerEntities = []; // Entity[]
+const selectionEntities = []; // all entities for selected-opp 3D viz
+
+// ───────── Init ─────────
+function init() {
+  const app = document.getElementById('imaging-planner-3d-app');
+  if (!app) return;
+
+  // Build left panel
+  const panel = document.createElement('div');
+  panel.className = 'ip3-panel';
+  panel.innerHTML = `
+    <div class="ip3-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <h1>Planlayıcı 3D</h1>
+        <span class="ip3-badge-beta">Beta</span>
+      </div>
+      <div class="ip3-nav">
+        <a href="./imaging-planner.html" title="2D Görünüme Dön">2D</a>
+        <a href="./gag.html" title="Geniş Alan Görüntüleme">GAG</a>
+        <a href="./animation.html" title="Animasyon ve Kayıt" style="color:#f85149;">🎬 Anim</a>
+        <a href="./index.html" title="Ana Sayfa">Ana</a>
+      </div>
+    </div>
+    <div id="ip3-sections"></div>
+  `;
+  app.append(panel);
+
+  // Viewer container
+  const viewerWrap = document.createElement('div');
+  viewerWrap.className = 'ip3-viewer';
+  viewerWrap.innerHTML = `
+    <div id="cesiumContainer"></div>
+    <div id="ip3-opp-strip" class="ip3-opp-strip"></div>
+    <button id="ip3-animate-fab" class="ip3-animate-fab" style="display:none;" title="Seçili fırsatı animasyonda aç">
+      🎬 Animasyonda Aç
+    </button>
+  `;
+  app.append(viewerWrap);
+
+  if (typeof Cesium === 'undefined') {
+    showToast('Cesium yüklenemedi (ağ bağlantısını kontrol edin)', 'error');
+    document.getElementById('cesiumContainer').innerHTML =
+      '<div style="padding:40px;color:#f85149;">Cesium yüklenemedi — internet bağlantısını kontrol edin.</div>';
+    return;
+  }
+
+  initCesium();
+  renderLeft();
+  applyUrlTarget();
+  importMainAppSatellites();
+}
+
+function initCesium() {
+  // Suppress Ion token warnings; use OpenStreetMap for imagery (no token needed).
+  Cesium.Ion.defaultAccessToken = '';
+
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    baseLayer: new Cesium.ImageryLayer(
+      new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' })
+    ),
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: true,
+    sceneModePicker: true,
+    navigationHelpButton: false,
+    animation: true,
+    timeline: true,
+    fullscreenButton: false,
+    infoBox: false,
+    selectionIndicator: true,
+    shouldAnimate: false,
+  });
+
+  viewer.scene.globe.enableLighting = true;
+  viewer.scene.skyAtmosphere.show = true;
+
+  // Default camera view over Turkey
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(35, 39, 10_000_000),
+    duration: 0,
+  });
+
+  // Click map to set target
+  viewer.screenSpaceEventHandler.setInputAction((click) => {
+    const cart = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+    if (!cart) return;
+    const carto = Cesium.Cartographic.fromCartesian(cart);
+    const lat = Cesium.Math.toDegrees(carto.latitude);
+    const lon = Cesium.Math.toDegrees(carto.longitude);
+    setTarget(lat, lon, 'Harita noktası');
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
+
+// ───────── URL target ─────────
+function applyUrlTarget() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('target');
+    if (t) {
+      const [lat, lon] = t.split(',').map(s => parseFloat(s.trim()));
+      if (isFinite(lat) && isFinite(lon)) {
+        setTarget(lat, lon, params.get('name') || null);
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+// ───────── Auto-import from main app ─────────
+async function importMainAppSatellites() {
+  try {
+    const saved = localStorage.getItem('sat-groundtrack-state');
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed.satellites) || parsed.satellites.length === 0) return;
+
+    const toImport = parsed.satellites.filter(
+      s => s.noradId && !satellites.find(x => x.noradId === s.noradId)
+    );
+    if (toImport.length === 0) return;
+
+    showToast(`Ana ekrandan ${toImport.length} uydu aktarılıyor...`, 'info');
+
+    const results = await Promise.allSettled(
+      toImport.map(async (s) => {
+        const tle = await fetchTLE(s.noradId);
+        const satrec = parseTLE(tle.line1, tle.line2);
+        return {
+          noradId: s.noradId,
+          name: tle.name || s.name,
+          color: s.color || getColor(satellites.length),
+          satrec,
+          tle: { line1: tle.line1, line2: tle.line2 },
+        };
+      })
+    );
+
+    let count = 0;
+    for (const r of results) {
+      if (r.status === 'fulfilled' && !satellites.find(x => x.noradId === r.value.noradId)) {
+        satellites.push(r.value);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      renderLeft();
+      showToast(`${count} uydu ana ekrandan aktarıldı`, 'success');
+    }
+  } catch (err) {
+    console.warn('Main app import failed:', err);
+  }
+}
+
+// ───────── Left panel ─────────
+function renderLeft() {
+  const c = document.getElementById('ip3-sections');
+  c.innerHTML = '';
+
+  c.append(buildTargetSection());
+  c.append(buildSatSection());
+  c.append(buildSettingsSection());
+  c.append(buildPitchSection());
+  c.append(buildStripSection());
+  c.append(buildStereoSection());
+  c.append(buildRunSection());
+}
+
+/** Collapsible section helper. `key` is used to persist open state across re-renders. */
+function buildCollapsible(key, title, defaultOpen, fillBody) {
+  const isOpen = sectionOpen[key] !== undefined ? sectionOpen[key] : defaultOpen;
+  const sec = el('div', 'ip3-section ip3-collapsible');
+  const header = el('div', 'ip3-collapsible-head');
+  header.innerHTML = `
+    <span class="ip3-section-title" style="margin:0;">${title}</span>
+    <span class="ip3-caret">${isOpen ? '▾' : '▸'}</span>
+  `;
+  const body = el('div', 'ip3-collapsible-body');
+  if (!isOpen) body.style.display = 'none';
+  fillBody(body);
+  header.addEventListener('click', () => {
+    sectionOpen[key] = !sectionOpen[key];
+    const nowOpen = sectionOpen[key];
+    body.style.display = nowOpen ? '' : 'none';
+    header.querySelector('.ip3-caret').textContent = nowOpen ? '▾' : '▸';
+  });
+  sec.append(header, body);
+  return sec;
+}
+
+function buildPitchSection() {
+  return buildCollapsible('pitch', '📷 Pitch Ayarı', false, (body) => {
+    const preset = getPreset(presetId);
+    const maxP = Math.max(preset.maxPitchDeg, 30); // allow up to 30° even for non-agile
+
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = preset.maxPitchDeg > 0
+      ? `${preset.name} pitch aralığı: ±${preset.maxPitchDeg}°. Pitch, uydunun öne/arkaya bakmasıdır — geçiş penceresini uzatır.`
+      : `${preset.name} çevik değil. Yine de pitch'i simülasyon için ayarlayabilirsiniz.`;
+    body.append(info);
+
+    const row = el('div', 'ip3-slider-row');
+    row.innerHTML = `<label>Pitch ±</label>`;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = 0; slider.max = maxP; slider.step = 1;
+    slider.value = pitchDeg;
+    const val = el('span', 'ip3-slider-val');
+    val.textContent = `${pitchDeg}°`;
+    slider.addEventListener('input', () => {
+      pitchDeg = parseInt(slider.value, 10);
+      val.textContent = `${pitchDeg}°`;
+      // Re-render current opp if any
+      if (selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+    });
+    row.append(slider, val);
+    body.append(row);
+  });
+}
+
+function buildStripSection() {
+  return buildCollapsible('strip', '📐 Şerit Çekim', false, (body) => {
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = 'Belirlenen süre boyunca sürekli çekim yaparak oluşan şerit alanını gösterir.';
+    body.append(info);
+
+    const durRow = el('div', 'ip3-slider-row');
+    durRow.innerHTML = `<label>Süre</label>`;
+    const durSlider = document.createElement('input');
+    durSlider.type = 'range';
+    durSlider.min = 1; durSlider.max = 60; durSlider.step = 1;
+    durSlider.value = stripDurationSec;
+    const durVal = el('span', 'ip3-slider-val');
+    durVal.textContent = `${stripDurationSec}s`;
+    durSlider.addEventListener('input', () => {
+      stripDurationSec = parseInt(durSlider.value, 10);
+      durVal.textContent = `${stripDurationSec}s`;
+      if (stripActive && selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+    });
+    durRow.append(durSlider, durVal);
+    body.append(durRow);
+
+    const btn = el('button', stripActive ? 'ip3-btn-danger' : 'ip3-btn');
+    btn.textContent = stripActive ? 'Şerit Kapat' : 'Şerit Göster';
+    btn.style.width = '100%';
+    btn.style.marginTop = '8px';
+    btn.disabled = selectedOppIdx < 0;
+    btn.addEventListener('click', () => {
+      stripActive = !stripActive;
+      if (selectedOppIdx >= 0) renderOppOnGlobe(opportunities[selectedOppIdx]);
+      renderLeft();
+    });
+    body.append(btn);
+
+    if (selectedOppIdx < 0) {
+      const warn = el('div', 'ip3-empty');
+      warn.style.fontSize = '11px';
+      warn.style.marginTop = '6px';
+      warn.textContent = 'Önce bir fırsat seçin.';
+      body.append(warn);
+    }
+
+    if (stripActive && selectedOppIdx >= 0) {
+      const opp = opportunities[selectedOppIdx];
+      const altKm = opp.altKm;
+      const rKm = 6371 + altKm;
+      const vKms = Math.sqrt(398600 / rKm);
+      const groundSpeedKms = vKms * 6371 / rKm;
+      const stripLengthKm = groundSpeedKms * stripDurationSec;
+      const preset = getPreset(presetId);
+
+      const resWrap = el('div', 'ip3-stereo-results');
+      const resTitle = el('div', 'ip3-stereo-title');
+      resTitle.textContent = 'ŞERİT BİLGİSİ';
+      resWrap.append(resTitle);
+
+      const card = el('div', 'ip3-stereo-card selected');
+      card.style.cursor = 'default';
+      card.innerHTML = `
+        <div class="ip3-stereo-leg">Süre: ${stripDurationSec} saniye</div>
+        <div class="ip3-stereo-leg">Uzunluk: ~${stripLengthKm.toFixed(1)} km</div>
+        <div class="ip3-stereo-leg">Genişlik: ${preset.swathKm} km</div>
+        <div class="ip3-stereo-leg">Alan: ~${(stripLengthKm * preset.swathKm).toFixed(0)} km²</div>
+      `;
+      resWrap.append(card);
+      body.append(resWrap);
+    }
+  });
+}
+
+function buildStereoSection() {
+  return buildCollapsible('stereo', '🎯 Stereo Planlama', false, (body) => {
+    const info = el('div', 'ip3-empty');
+    info.style.textAlign = 'left';
+    info.style.fontSize = '12px';
+    info.style.padding = '0 0 8px 0';
+    info.textContent = 'Aynı geçişte öne/arkaya pitch vererek stereo çift elde edin. B/H oranını ayarlayın.';
+    body.append(info);
+
+    // B/H slider
+    const bhRow = el('div', 'ip3-slider-row');
+    bhRow.innerHTML = `<label>B/H</label>`;
+    const bhSlider = document.createElement('input');
+    bhSlider.type = 'range';
+    bhSlider.min = 0.3; bhSlider.max = 2.0; bhSlider.step = 0.1;
+    bhSlider.value = stereoBH;
+    const bhVal = el('span', 'ip3-slider-val');
+    bhVal.textContent = stereoBH.toFixed(1);
+    bhSlider.addEventListener('input', () => {
+      stereoBH = parseFloat(bhSlider.value);
+      bhVal.textContent = stereoBH.toFixed(1);
+      updateStereoInfo();
+      if (stereoActive && selectedOppIdx >= 0) renderStereoOnGlobe(opportunities[selectedOppIdx]);
+    });
+    bhRow.append(bhSlider, bhVal);
+    body.append(bhRow);
+
+    // Computed pitch info
+    const pitchInfo = el('div', 'ip3-empty');
+    pitchInfo.id = 'ip3-stereo-pitch-info';
+    pitchInfo.style.textAlign = 'left';
+    pitchInfo.style.fontSize = '11px';
+    pitchInfo.style.padding = '4px 0';
+    pitchInfo.style.color = '#8b949e';
+    const pitchAngle = Math.atan(stereoBH / 2) * 180 / Math.PI;
+    pitchInfo.textContent = `Pitch açısı: ±${pitchAngle.toFixed(1)}° · Yakınsama: ${(2 * pitchAngle).toFixed(1)}°`;
+    body.append(pitchInfo);
+
+    // Toggle button
+    const btn = el('button', stereoActive ? 'ip3-btn-danger' : 'ip3-btn');
+    btn.textContent = stereoActive ? 'Stereo Kapat' : 'Stereo Göster';
+    btn.style.width = '100%';
+    btn.style.marginTop = '8px';
+    btn.disabled = selectedOppIdx < 0;
+    btn.addEventListener('click', () => {
+      stereoActive = !stereoActive;
+      if (stereoActive && selectedOppIdx >= 0) {
+        renderStereoOnGlobe(opportunities[selectedOppIdx]);
+      } else if (!stereoActive && selectedOppIdx >= 0) {
+        renderOppOnGlobe(opportunities[selectedOppIdx]);
+        animateAroundOpp(opportunities[selectedOppIdx]);
+      }
+      renderLeft();
+    });
+    body.append(btn);
+
+    if (selectedOppIdx < 0) {
+      const warn = el('div', 'ip3-empty');
+      warn.style.fontSize = '11px';
+      warn.style.marginTop = '6px';
+      warn.textContent = 'Önce bir fırsat seçin.';
+      body.append(warn);
+    }
+
+    // Stereo geometry info when active
+    if (stereoActive && selectedOppIdx >= 0) {
+      const opp = opportunities[selectedOppIdx];
+      const altKm = opp.altKm;
+      const pitchA = Math.atan(stereoBH / 2) * 180 / Math.PI;
+      const baseKm = stereoBH * altKm;
+
+      const resWrap = el('div', 'ip3-stereo-results');
+      const resTitle = el('div', 'ip3-stereo-title');
+      resTitle.textContent = 'STEREO GEOMETRİSİ';
+      resWrap.append(resTitle);
+
+      const card = el('div', 'ip3-stereo-card selected');
+      card.style.cursor = 'default';
+      card.innerHTML = `
+        <div class="ip3-stereo-row">
+          <span class="ip3-stereo-conv">B/H ${stereoBH.toFixed(1)}</span>
+          <span class="ip3-stereo-gap">${altKm.toFixed(0)} km yükseklik</span>
+        </div>
+        <div class="ip3-stereo-leg">Pitch: ±${pitchA.toFixed(1)}° · Yakınsama: ${(2 * pitchA).toFixed(1)}°</div>
+        <div class="ip3-stereo-leg">Taban mesafesi: ${baseKm.toFixed(0)} km</div>
+        <div class="ip3-stereo-leg" style="color:${opp.sat.color};">● ${esc(opp.sat.name)} · ${fmtDate(opp.time)} ${fmtTime(opp.time)}</div>
+      `;
+      resWrap.append(card);
+      body.append(resWrap);
+    }
+  });
+}
+
+function buildTargetSection() {
+  const sec = el('div', 'ip3-section');
+  sec.innerHTML = '<div class="ip3-section-title">Hedef Nokta</div>';
+
+  const wrap = el('div', 'ip3-search-wrap');
+  const input = el('input', 'ip3-input');
+  input.type = 'text';
+  input.placeholder = 'Konum ara (şehir, yer...)';
+  const results = el('div', 'ip3-search-results');
+  results.style.display = 'none';
+
+  let searchT = null;
+  input.addEventListener('input', () => {
+    clearTimeout(searchT);
+    const q = input.value.trim();
+    if (!q) { results.style.display = 'none'; return; }
+    searchT = setTimeout(() => nominatimSearch(q, results, input), 500);
+  });
+  wrap.append(input, results);
+  sec.append(wrap);
+
+  // Manual coords
+  const row = el('div', 'ip3-input-row');
+  const latInp = el('input', 'ip3-input');
+  latInp.type = 'number'; latInp.step = '0.0001'; latInp.placeholder = 'Enlem';
+  latInp.value = targetLat != null ? targetLat.toFixed(4) : '';
+  const lonInp = el('input', 'ip3-input');
+  lonInp.type = 'number'; lonInp.step = '0.0001'; lonInp.placeholder = 'Boylam';
+  lonInp.value = targetLon != null ? targetLon.toFixed(4) : '';
+  const setBtn = el('button', 'ip3-btn');
+  setBtn.textContent = 'Ayarla';
+  setBtn.addEventListener('click', () => {
+    const la = parseFloat(latInp.value), lo = parseFloat(lonInp.value);
+    if (isFinite(la) && isFinite(lo) && la >= -90 && la <= 90 && lo >= -180 && lo <= 180) {
+      setTarget(la, lo, 'Manuel koordinat');
+    } else {
+      showToast('Geçersiz koordinat', 'warning');
+    }
+  });
+  row.append(latInp, lonInp, setBtn);
+  sec.append(row);
+
+  if (targetLat != null) {
+    const card = el('div', 'ip3-target-card');
+    card.innerHTML = `
+      <div class="ip3-target-coords">${targetLat.toFixed(5)}°, ${targetLon.toFixed(5)}°</div>
+      ${targetName ? `<div class="ip3-target-name">${esc(targetName)}</div>` : ''}
+    `;
+    sec.append(card);
+  } else {
+    const hint = el('div', 'ip3-empty');
+    hint.textContent = '3D haritada bir noktaya tıklayarak da hedef seçebilirsiniz';
+    sec.append(hint);
+  }
+
+  return sec;
+}
+
+async function nominatimSearch(query, results, input) {
+  results.innerHTML = '<div class="ip3-search-item ip3-search-loading">Aranıyor...</div>';
+  results.style.display = 'block';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'tr' } });
+    const data = await res.json();
+    results.innerHTML = '';
+    if (data.length === 0) {
+      results.innerHTML = '<div class="ip3-search-item ip3-search-loading">Sonuç yok</div>';
+      return;
+    }
+    for (const p of data) {
+      const displayName = p.display_name || p.name || 'Konum';
+      const item = el('div', 'ip3-search-item');
+      item.textContent = displayName;
+      item.addEventListener('click', () => {
+        setTarget(parseFloat(p.lat), parseFloat(p.lon), displayName.split(',')[0]);
+        input.value = '';
+        results.style.display = 'none';
+      });
+      results.append(item);
+    }
+  } catch {
+    results.innerHTML = '<div class="ip3-search-item ip3-search-loading">Arama hatası</div>';
+  }
+}
+
+function buildSatSection() {
+  const sec = el('div', 'ip3-section');
+  sec.innerHTML = '<div class="ip3-section-title">Uydular</div>';
+
+  // Add satellite by NORAD ID
+  const row = el('div', 'ip3-input-row');
+  const input = el('input', 'ip3-input');
+  input.type = 'number';
+  input.placeholder = 'NORAD ID (örn. 25544)';
+  const addBtn = el('button', 'ip3-btn');
+  addBtn.textContent = 'Ekle';
+  const doAdd = async () => {
+    const id = parseInt(input.value, 10);
+    if (!Number.isFinite(id) || id <= 0) { showToast('Geçersiz NORAD ID', 'warning'); return; }
+    if (satellites.find(s => s.noradId === id)) { showToast('Bu uydu zaten eklenmiş', 'warning'); return; }
+    addBtn.disabled = true; addBtn.textContent = '...';
+    try {
+      const tle = await fetchTLE(id);
+      const satrec = parseTLE(tle.line1, tle.line2);
+      satellites.push({
+        noradId: id, name: tle.name,
+        color: getColor(satellites.length),
+        satrec,
+        tle: { line1: tle.line1, line2: tle.line2 },
+      });
+      input.value = '';
+      renderLeft();
+      showToast(`${tle.name} eklendi`, 'success');
+    } catch (err) {
+      showToast(`TLE alınamadı: ${err.message}`, 'error');
+    }
+    addBtn.disabled = false; addBtn.textContent = 'Ekle';
+  };
+  addBtn.addEventListener('click', doAdd);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+  row.append(input, addBtn);
+  sec.append(row);
+
+  // Re-import button
+  const reimportBtn = el('button', 'ip3-btn');
+  reimportBtn.textContent = 'Ana Ekrandan Aktar';
+  reimportBtn.style.fontSize = '11px';
+  reimportBtn.style.marginTop = '6px';
+  reimportBtn.style.width = '100%';
+  reimportBtn.addEventListener('click', () => importMainAppSatellites());
+  sec.append(reimportBtn);
+
+  // List
+  if (satellites.length === 0) {
+    const empty = el('div', 'ip3-empty');
+    empty.textContent = 'Henüz uydu eklenmedi';
+    sec.append(empty);
+  } else {
+    for (const sat of satellites) {
+      const row = el('div', 'ip3-sat-row');
+      const chip = el('div', 'ip3-sat-chip');
+      chip.style.background = sat.color;
+      const name = el('div', 'ip3-sat-name');
+      name.textContent = `${sat.name} #${sat.noradId}`;
+      const rm = el('button', 'ip3-sat-remove');
+      rm.textContent = '×';
+      rm.title = 'Kaldır';
+      rm.addEventListener('click', () => {
+        satellites = satellites.filter(s => s.noradId !== sat.noradId);
+        renderLeft();
+      });
+      row.append(chip, name, rm);
+      sec.append(row);
+    }
+  }
+
+  return sec;
+}
+
+function buildSettingsSection() {
+  const sec = el('div', 'ip3-section');
+  sec.innerHTML = '<div class="ip3-section-title">Sensör Ayarları</div>';
+
+  const preset = getPreset(presetId);
+
+  const sel = el('select', 'ip3-select');
+  for (const p of SENSOR_PRESETS) {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = `${p.name} (${p.swathKm} km)`;
+    if (p.id === presetId) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener('change', () => {
+    presetId = sel.value;
+    const p = getPreset(presetId);
+    rollDeg = Math.min(rollDeg, p.maxRollDeg);
+    pitchDeg = p.maxPitchDeg === 0 ? 0 : Math.min(pitchDeg, p.maxPitchDeg);
+    renderLeft();
+  });
+  sec.append(sel);
+
+  // Roll slider
+  const rollRow = el('div', 'ip3-slider-row');
+  rollRow.innerHTML = `<label>Roll ±</label>`;
+  const rollSlider = document.createElement('input');
+  rollSlider.type = 'range';
+  rollSlider.min = 0; rollSlider.max = preset.maxRollDeg; rollSlider.step = 1;
+  rollSlider.value = rollDeg;
+  const rollVal = el('span', 'ip3-slider-val');
+  rollVal.textContent = `${rollDeg}°`;
+  rollSlider.addEventListener('input', () => {
+    rollDeg = parseInt(rollSlider.value, 10);
+    rollVal.textContent = `${rollDeg}°`;
+  });
+  rollRow.append(rollSlider, rollVal);
+  sec.append(rollRow);
+
+  return sec;
+}
+
+function buildRunSection() {
+  const sec = el('div', 'ip3-section');
+
+  const btn = el('button', 'ip3-btn-primary');
+  btn.textContent = running ? 'Analiz Ediliyor...' : 'Fırsatları Bul';
+  btn.disabled = running || targetLat == null || satellites.length === 0;
+  btn.addEventListener('click', () => runAnalysis());
+  sec.append(btn);
+
+  if (running) {
+    const prog = el('div', 'ip3-progress');
+    prog.innerHTML = `
+      <div class="ip3-progress-bar"><div class="ip3-progress-fill" style="width:${(progress * 100).toFixed(0)}%"></div></div>
+      <div class="ip3-progress-text">%${(progress * 100).toFixed(0)} tamamlandı</div>
+    `;
+    sec.append(prog);
+  }
+
+  if (opportunities.length > 0) {
+    const summary = el('div', 'ip3-empty');
+    summary.style.color = '#7ee787';
+    summary.textContent = `${opportunities.length} fırsat bulundu`;
+    sec.append(summary);
+  }
+
+  return sec;
+}
+
+// ───────── Target setter ─────────
+function setTarget(lat, lon, name) {
+  targetLat = lat;
+  targetLon = lon;
+  targetName = name || null;
+
+  if (targetEntity) viewer.entities.remove(targetEntity);
+  targetEntity = viewer.entities.add({
+    name: name || 'Hedef',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat, 0),
+    billboard: {
+      image: targetPinDataUrl(),
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      scale: 1,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+    label: {
+      text: name || `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`,
+      font: '12px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -46),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1_500_000),
+    duration: 1.5,
+  });
+
+  renderLeft();
+}
+
+function targetPinDataUrl() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44">
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 10 16 28 16 28s16-18 16-28C32 7.2 24.8 0 16 0z" fill="#e04040"/>
+    <circle cx="16" cy="16" r="6" fill="#fff"/>
+  </svg>`;
+  return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+// ───────── Analysis ─────────
+async function runAnalysis() {
+  if (targetLat == null || satellites.length === 0) return;
+  running = true;
+  progress = 0;
+  selectedOppIdx = -1;
+  stereoActive = false;
+  opportunities = [];
+  clearOppVisuals();
+  renderLeft();
+  updateOppStrip();
+
+  const settings = {
+    ...DEFAULT_OPPORTUNITY_CONFIG,
+    MAX_ROLL_DEG: rollDeg,
+    SEARCH_HORIZON_DAYS: 7,
+  };
+
+  const cloudPromise = fetchCloudForecast(targetLat, targetLon, 7);
+  const totalSats = satellites.length;
+
+  for (let i = 0; i < satellites.length; i++) {
+    const sat = satellites[i];
+    try {
+      const opps = await findOpportunities(
+        sat.satrec, targetLat, targetLon, settings,
+        (p) => {
+          progress = (i + p) / totalSats;
+          updateProgress();
+        }
+      );
+      for (const o of opps) {
+        const { score, stars } = computeOpportunityScore(o, { maxRollDeg: rollDeg });
+        opportunities.push({ ...o, sat, score, stars });
+      }
+    } catch (err) {
+      console.warn(`Analiz hatası ${sat.name}:`, err);
+    }
+  }
+
+  opportunities.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+  const forecast = await cloudPromise;
+  if (forecast) enrichWithCloud(opportunities, forecast);
+
+  running = false;
+  progress = 1;
+
+  drawOppMarkers();
+  renderLeft();
+  updateOppStrip();
+
+  if (opportunities.length > 0) {
+    selectOpp(0);
+  } else {
+    showToast('Hiç fırsat bulunamadı — roll açısını artırmayı deneyin', 'warning');
+  }
+}
+
+function updateProgress() {
+  const fill = document.querySelector('.ip3-progress-fill');
+  const text = document.querySelector('.ip3-progress-text');
+  if (fill) fill.style.width = `${(progress * 100).toFixed(0)}%`;
+  if (text) text.textContent = `%${(progress * 100).toFixed(0)} tamamlandı`;
+}
+
+// ───────── Drawing ─────────
+
+/** Draw just the selected opportunity's orbital pass (±25 min around opp time). */
+function drawSelectedPassArc(opp) {
+  const windowMin = 25;
+  const stepS = 20;
+  const points = [];
+
+  for (let dt = -windowMin * 60; dt <= windowMin * 60; dt += stepS) {
+    const date = new Date(opp.time.getTime() + dt * 1000);
+    const pos = propagateAt(opp.sat.satrec, date);
+    if (pos) points.push(pos.lon, pos.lat, pos.alt * 1000);
+  }
+  if (points.length < 6) return;
+
+  const color = Cesium.Color.fromCssColorString(opp.sat.color);
+
+  // In-space arc (at altitude)
+  addSel({
+    name: opp.sat.name + ' geçiş',
+    polyline: {
+      positions: Cesium.Cartesian3.fromDegreesArrayHeights(points),
+      width: 3,
+      material: color.withAlpha(0.85),
+      clampToGround: false,
+    },
+  });
+
+  // Ground projection of the same arc
+  const groundPts = [];
+  for (let i = 0; i < points.length; i += 3) {
+    groundPts.push(points[i], points[i + 1]);
+  }
+  addSel({
+    name: opp.sat.name + ' yer izi',
+    polyline: {
+      positions: Cesium.Cartesian3.fromDegreesArray(groundPts),
+      width: 2,
+      material: color.withAlpha(0.5),
+      clampToGround: true,
+    },
+  });
+}
+
+function drawOppMarkers() {
+  for (const e of oppMarkerEntities) viewer.entities.remove(e);
+  oppMarkerEntities.length = 0;
+
+  for (let i = 0; i < opportunities.length; i++) {
+    const o = opportunities[i];
+    const e = viewer.entities.add({
+      name: `Fırsat ${i + 1}`,
+      position: Cesium.Cartesian3.fromDegrees(o.subSatLon, o.subSatLat, 0),
+      point: {
+        pixelSize: 10,
+        color: cesiumColor(o.sat.color, 0.9),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+      description: oppDescription(o, i),
+    });
+    oppMarkerEntities.push(e);
+  }
+}
+
+function clearOppVisuals() {
+  for (const e of oppMarkerEntities) viewer.entities.remove(e);
+  oppMarkerEntities.length = 0;
+  clearSelectionEntities();
+}
+
+function clearSelectionEntities() {
+  for (const e of selectionEntities) {
+    try { viewer.entities.remove(e); } catch { /* ignore */ }
+  }
+  selectionEntities.length = 0;
+}
+
+function addSel(entity) {
+  selectionEntities.push(viewer.entities.add(entity));
+}
+
+// ───────── Opportunity selection + 3D scene ─────────
+function selectOpp(idx) {
+  if (idx < 0 || idx >= opportunities.length) return;
+  selectedOppIdx = idx;
+  const opp = opportunities[idx];
+
+  if (stereoActive) {
+    renderStereoOnGlobe(opp);
+  } else {
+    renderOppOnGlobe(opp);
+    animateAroundOpp(opp);
+  }
+  updateOppStrip();
+  updateAnimateFab();
+  renderLeft();
+}
+
+function updateAnimateFab() {
+  const fab = document.getElementById('ip3-animate-fab');
+  if (!fab) return;
+  if (selectedOppIdx < 0 || targetLat == null) {
+    fab.style.display = 'none';
+    return;
+  }
+  fab.style.display = '';
+  // Re-bind to the current opp
+  fab.onclick = () => openInAnimation(opportunities[selectedOppIdx]);
+}
+
+function openInAnimation(opp) {
+  if (!opp || targetLat == null) return;
+  const params = new URLSearchParams({
+    target: `${targetLat.toFixed(5)},${targetLon.toFixed(5)}`,
+    sat: String(opp.sat.noradId),
+    opp: opp.time.toISOString(),
+    roll: opp.rollDeg.toFixed(2),
+    preset: presetId,
+  });
+  if (targetName) params.set('name', targetName);
+  window.open(`./animation.html?${params.toString()}`, '_blank');
+}
+
+// ───────── Stereo planning (same-pass, forward/backward pitch) ─────────
+
+function updateStereoInfo() {
+  const infoEl = document.getElementById('ip3-stereo-pitch-info');
+  if (!infoEl) return;
+  const pa = Math.atan(stereoBH / 2) * 180 / Math.PI;
+  infoEl.textContent = `Pitch açısı: ±${pa.toFixed(1)}° · Yakınsama: ${(2 * pa).toFixed(1)}°`;
+}
+
+function renderStereoOnGlobe(opp) {
+  clearSelectionEntities();
+  drawSelectedPassArc(opp);
+
+  const satPos = propagateAt(opp.sat.satrec, opp.time);
+  if (!satPos) return;
+
+  const altKm = satPos.alt;
+  const baseKm = stereoBH * altKm;
+  const halfBaseKm = baseKm / 2;
+
+  // Orbital velocity for time offset
+  const rKm = 6371 + altKm;
+  const vKms = Math.sqrt(398600 / rKm);
+  const dtSec = halfBaseKm / vKms;
+
+  // Forward acquisition: sat BEFORE target, pitched forward to see it
+  // Backward acquisition: sat AFTER target, pitched backward to see it
+  const timeFwd = new Date(opp.time.getTime() - dtSec * 1000);
+  const timeBwd = new Date(opp.time.getTime() + dtSec * 1000);
+
+  const posFwd = propagateAt(opp.sat.satrec, timeFwd);
+  const posBwd = propagateAt(opp.sat.satrec, timeBwd);
+  if (!posFwd || !posBwd) return;
+
+  const preset = getPreset(presetId);
+  const heading = satHeadingAt(opp.sat.satrec, opp.time);
+
+  // Both acquisitions image the same target area
+  const corners = cornersAroundTarget(targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm);
+  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+  const fpCoords = [];
+  for (const c of corners) fpCoords.push(c[1], c[0]);
+
+  const acquisitions = [
+    { pos: posFwd, label: 'Ön Çekim (İleri)', time: timeFwd, color: Cesium.Color.CYAN },
+    { pos: posBwd, label: 'Arka Çekim (Geri)', time: timeBwd, color: Cesium.Color.ORANGE },
+  ];
+
+  for (const acq of acquisitions) {
+    const satCart = Cesium.Cartesian3.fromDegrees(acq.pos.lon, acq.pos.lat, acq.pos.alt * 1000);
+    const subSatCart = Cesium.Cartesian3.fromDegrees(acq.pos.lon, acq.pos.lat, 0);
+
+    // Satellite marker
+    addSel({
+      position: satCart,
+      point: { pixelSize: 14, color: acq.color, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
+      label: {
+        text: `${acq.label}\n${fmtTime(acq.time)}`,
+        font: 'bold 12px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -26),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    // Nadir line
+    addSel({
+      polyline: {
+        positions: [satCart, subSatCart],
+        width: 1,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: acq.color.withAlpha(0.3), dashLength: 12,
+        }),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    // Sensor cone edges to target footprint
+    for (let ci = 0; ci < 4; ci++) {
+      addSel({
+        polyline: {
+          positions: [satCart, cornerCarts[ci]],
+          width: 1.5,
+          material: acq.color.withAlpha(0.5),
+          arcType: Cesium.ArcType.NONE,
+        },
+      });
+    }
+
+    // FOV walls
+    for (let ci = 0; ci < 4; ci++) {
+      const next = (ci + 1) % 4;
+      addSel({
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy([satCart, cornerCarts[ci], cornerCarts[next]]),
+          material: acq.color.withAlpha(0.06),
+          perPositionHeight: true,
+        },
+      });
+    }
+  }
+
+  // Shared target footprint on the ground
+  addSel({
+    name: 'Stereo hedef alanı',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+      material: Cesium.Color.MAGENTA.withAlpha(0.2),
+      outline: true,
+      outlineColor: Cesium.Color.MAGENTA.withAlpha(0.8),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // Stereo baseline between the two satellite positions
+  const cartFwd = Cesium.Cartesian3.fromDegrees(posFwd.lon, posFwd.lat, posFwd.alt * 1000);
+  const cartBwd = Cesium.Cartesian3.fromDegrees(posBwd.lon, posBwd.lat, posBwd.alt * 1000);
+  addSel({
+    name: 'Stereo taban çizgisi',
+    polyline: {
+      positions: [cartFwd, cartBwd],
+      width: 2,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.MAGENTA, dashLength: 16,
+      }),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Camera: show both satellite positions + target
+  const centerLat = (posFwd.lat + posBwd.lat + targetLat) / 3;
+  const centerLon = (posFwd.lon + posBwd.lon + targetLon) / 3;
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(centerLon, centerLat - 6, altKm * 1000 * 2.5),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-45),
+      roll: 0,
+    },
+    duration: 1.8,
+  });
+}
+
+function renderOppOnGlobe(opp) {
+  clearSelectionEntities();
+
+  const satPos = propagateAt(opp.sat.satrec, opp.time);
+  if (!satPos) return;
+
+  // ──── 0. Pass arc for the selected opportunity ────
+  drawSelectedPassArc(opp);
+
+  const altM = satPos.alt * 1000;
+  const satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, altM);
+  const subSatCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, 0);
+  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
+
+  // ──── 1. Satellite 3D model marker ────
+  addSel({
+    name: opp.sat.name,
+    position: satCart,
+    point: {
+      pixelSize: 16,
+      color: satColor,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+    },
+    label: {
+      text: `${opp.sat.name}\n${satPos.alt.toFixed(0)} km`,
+      font: 'bold 12px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -28),
+    },
+  });
+
+  // ──── 2. Nadir line (satellite → sub-satellite point) ────
+  addSel({
+    name: 'Nadir',
+    polyline: {
+      positions: [satCart, subSatCart],
+      width: 1,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.CYAN.withAlpha(0.5),
+        dashLength: 12,
+      }),
+      arcType: Cesium.ArcType.NONE,
+    },
+  });
+
+  // Sub-satellite ground ring
+  addSel({
+    name: 'Alt-uydu noktası',
+    position: subSatCart,
+    ellipse: {
+      semiMajorAxis: 15_000,
+      semiMinorAxis: 15_000,
+      material: Cesium.Color.CYAN.withAlpha(0.15),
+      outline: true,
+      outlineColor: Cesium.Color.CYAN.withAlpha(0.6),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // ──── 2b. Roll angle visualization ────
+  if (Math.abs(opp.rollDeg) > 0.5) {
+    const rollRad = opp.rollDeg * Math.PI / 180;
+    const heading = satHeadingAt(opp.sat.satrec, opp.time);
+    const perpAngle = heading + Math.PI / 2;
+    const sign = rollSignForTarget(opp.sat.satrec, opp.time);
+
+    // Roll yönündeki look noktası: nadir'den roll açısıyla sapma (yerde)
+    const safeRollRad = Math.min(Math.PI / 2 - 0.01, Math.abs(rollRad));
+    const rollGroundOffsetKm = satPos.alt * Math.tan(safeRollRad);
+    const lookLat = satPos.lat + (rollGroundOffsetKm * Math.cos(perpAngle) * sign) / 111;
+    const cosLat = Math.max(0.01, Math.cos(satPos.lat * Math.PI / 180));
+    const lookLon = satPos.lon + (rollGroundOffsetKm * Math.sin(perpAngle) * sign) / (111 * cosLat);
+    const lookCart = Cesium.Cartesian3.fromDegrees(lookLon, lookLat, 0);
+
+    // Roll açı çizgisi: uydudan look noktasına (turuncu, kalın)
+    addSel({
+      name: `Roll ${opp.rollDeg.toFixed(1)}°`,
+      polyline: {
+        positions: [satCart, lookCart],
+        width: 3,
+        material: Cesium.Color.ORANGE.withAlpha(0.8),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    // Roll açı yayı: nadir ile roll çizgisi arasında küçük yay
+    const arcSteps = 12;
+    const arcRadius = altM * 0.15;
+    const nadirDir = Cesium.Cartesian3.subtract(subSatCart, satCart, new Cesium.Cartesian3());
+    Cesium.Cartesian3.normalize(nadirDir, nadirDir);
+    const lookDir = Cesium.Cartesian3.subtract(lookCart, satCart, new Cesium.Cartesian3());
+    Cesium.Cartesian3.normalize(lookDir, lookDir);
+
+    const arcPts = [];
+    for (let s = 0; s <= arcSteps; s++) {
+      const t = s / arcSteps;
+      const interp = new Cesium.Cartesian3();
+      Cesium.Cartesian3.lerp(nadirDir, lookDir, t, interp);
+      Cesium.Cartesian3.normalize(interp, interp);
+      Cesium.Cartesian3.multiplyByScalar(interp, arcRadius, interp);
+      Cesium.Cartesian3.add(satCart, interp, interp);
+      arcPts.push(interp.clone());
+    }
+    addSel({
+      polyline: {
+        positions: arcPts,
+        width: 2.5,
+        material: Cesium.Color.ORANGE.withAlpha(0.9),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+
+    // Roll açı etiketi
+    if (arcPts.length > 0) {
+      const midArc = arcPts[Math.floor(arcPts.length / 2)];
+      addSel({
+        position: midArc,
+        label: {
+          text: `${Math.abs(opp.rollDeg).toFixed(1)}°`,
+          font: 'bold 14px sans-serif',
+          fillColor: Cesium.Color.ORANGE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(15, 0),
+          showBackground: true,
+          backgroundColor: new Cesium.Color(0, 0, 0, 0.6),
+          backgroundPadding: new Cesium.Cartesian2(6, 4),
+        },
+      });
+    }
+
+    // Roll yönü üçgeni (yarı saydam dolgu: nadir-sat-look)
+    addSel({
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy([satCart, subSatCart, lookCart]),
+        material: Cesium.Color.ORANGE.withAlpha(0.1),
+        outline: false,
+        perPositionHeight: true,
+      },
+    });
+  }
+
+  // ──── 3. Footprint + sensor cone (centered on target) ────
+  const preset = getPreset(presetId);
+  const heading = satHeadingAt(opp.sat.satrec, opp.time); // radians from north
+  const corners = cornersAroundTarget(
+    targetLat, targetLon, heading, preset.swathKm, preset.frameHeightKm
+  );
+  const cornerCarts = corners.map(c => Cesium.Cartesian3.fromDegrees(c[1], c[0], 0));
+
+  // Ground footprint polygon (filled) — centered on the target
+  const fpCoords = [];
+  for (const c of corners) fpCoords.push(c[1], c[0]);
+  addSel({
+    name: 'Sensör karesi',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(fpCoords),
+      material: satColor.withAlpha(0.25),
+      outline: true,
+      outlineColor: satColor.withAlpha(0.9),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+
+  // ── Sensor cone: 4 edge lines from sat to each footprint corner ──
+  for (let ci = 0; ci < 4; ci++) {
+    addSel({
+      polyline: {
+        positions: [satCart, cornerCarts[ci]],
+        width: 1.5,
+        material: satColor.withAlpha(0.6),
+        arcType: Cesium.ArcType.NONE,
+      },
+    });
+  }
+
+  // ── FOV wall polygons (4 triangular faces) ──
+  for (let ci = 0; ci < 4; ci++) {
+    const next = (ci + 1) % 4;
+    addSel({
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy([
+          satCart, cornerCarts[ci], cornerCarts[next],
+        ]),
+        material: satColor.withAlpha(0.08),
+        outline: false,
+        perPositionHeight: true,
+      },
+    });
+  }
+
+  // ──── 5. Ground swath strip ────
+  if (stripActive) {
+    drawSwathStrip(opp, stripDurationSec, true);
+  } else {
+    drawSwathStrip(opp, 600, false);
+  }
+}
+
+function rollSignForTarget(satrec, t) {
+  const pos = propagateAt(satrec, t);
+  if (!pos) return 1;
+  const heading = satHeadingAt(satrec, t);
+  const cosLat = Math.cos(pos.lat * Math.PI / 180);
+  const dN = (targetLat - pos.lat) * 111.0;
+  const dE = (targetLon - pos.lon) * 111.0 * cosLat;
+  const crossTrack = dE * Math.cos(heading) - dN * Math.sin(heading);
+  return crossTrack >= 0 ? 1 : -1;
+}
+
+function drawSwathStrip(opp, totalSec, highlight) {
+  const preset = getPreset(presetId);
+  const steps = Math.max(20, Math.ceil(totalSec / 5));
+  const stepMs = (totalSec * 1000) / steps;
+  const satColor = Cesium.Color.fromCssColorString(opp.sat.color);
+  const signedRoll = rollSignForTarget(opp.sat.satrec, opp.time) * Math.abs(opp.rollDeg);
+
+  // Strip mode: opp.time is the capture start; extend forward in sat motion.
+  // Overview mode: centered around opp.time (symmetric window).
+  const startOffsetMs = highlight ? 0 : -(totalSec / 2) * 1000;
+  const endOffsetMs = highlight ? totalSec * 1000 : (totalSec / 2) * 1000;
+
+  const leftEdge = [];
+  const rightEdge = [];
+
+  for (let dt = startOffsetMs; dt <= endOffsetMs; dt += stepMs) {
+    const t = new Date(opp.time.getTime() + dt);
+    const pre = propagateAt(opp.sat.satrec, new Date(t.getTime() - 1000));
+    const cur = propagateAt(opp.sat.satrec, t);
+    const post = propagateAt(opp.sat.satrec, new Date(t.getTime() + 1000));
+    if (!pre || !cur || !post) continue;
+
+    const trackPts = [
+      { time: new Date(t.getTime() - 1000), lat: pre.lat, lon: pre.lon, alt: pre.alt },
+      { time: t, lat: cur.lat, lon: cur.lon, alt: cur.alt },
+      { time: new Date(t.getTime() + 1000), lat: post.lat, lon: post.lon, alt: post.alt },
+    ];
+    const rect = computeFootprintRect(
+      trackPts, 1, preset.swathKm, preset.frameHeightKm, signedRoll, 0
+    );
+    if (!rect || !rect.corners || rect.corners.length < 4) continue;
+
+    leftEdge.push(rect.corners[0]);
+    rightEdge.push(rect.corners[1]);
+  }
+
+  if (leftEdge.length < 2) return;
+
+  const stripCoords = [];
+  for (const c of leftEdge) stripCoords.push(c[1], c[0]);
+  for (let i = rightEdge.length - 1; i >= 0; i--) {
+    stripCoords.push(rightEdge[i][1], rightEdge[i][0]);
+  }
+
+  if (stripCoords.length < 6) return;
+
+  const alpha = highlight ? 0.25 : 0.1;
+  const outAlpha = highlight ? 0.7 : 0.4;
+  const color = highlight ? Cesium.Color.YELLOW : satColor;
+
+  addSel({
+    name: 'Tarama şeridi',
+    polygon: {
+      hierarchy: Cesium.Cartesian3.fromDegreesArray(stripCoords),
+      material: color.withAlpha(alpha),
+      outline: true,
+      outlineColor: color.withAlpha(outAlpha),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+    },
+  });
+}
+
+function animateAroundOpp(opp) {
+  const windowMin = 15;
+  const start = new Date(opp.time.getTime() - windowMin * 60 * 1000);
+  const stop = new Date(opp.time.getTime() + windowMin * 60 * 1000);
+
+  viewer.clock.startTime = Cesium.JulianDate.fromDate(start);
+  viewer.clock.stopTime = Cesium.JulianDate.fromDate(stop);
+  viewer.clock.currentTime = Cesium.JulianDate.fromDate(opp.time);
+  viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP;
+  viewer.clock.multiplier = 30;
+  viewer.timeline.zoomTo(viewer.clock.startTime, viewer.clock.stopTime);
+
+  // Fly camera to look at satellite from slightly behind/above
+  const satPos = propagateAt(opp.sat.satrec, opp.time);
+  if (!satPos) return;
+
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(
+      (targetLon + satPos.lon) / 2,
+      (targetLat + satPos.lat) / 2 - 8,
+      satPos.alt * 1000 * 1.8
+    ),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-40),
+      roll: 0,
+    },
+    duration: 1.8,
+  });
+}
+
+// ───────── Opportunity strip ─────────
+function updateOppStrip() {
+  const strip = document.getElementById('ip3-opp-strip');
+  if (!strip) return;
+  strip.innerHTML = '';
+  if (opportunities.length === 0) return;
+
+  for (let i = 0; i < opportunities.length; i++) {
+    const o = opportunities[i];
+    const card = el('div', 'ip3-opp-card' + (i === selectedOppIdx ? ' selected' : ''));
+    const stars = '★'.repeat(o.stars) + '☆'.repeat(5 - o.stars);
+    card.innerHTML = `
+      <div class="ip3-opp-time">${fmtTime(o.time)}</div>
+      <div class="ip3-opp-date">${fmtDate(o.time)}</div>
+      <div class="ip3-opp-stars">${stars}</div>
+      <div class="ip3-opp-roll">Roll <b>${o.rollDeg.toFixed(1)}°</b></div>
+      <div class="ip3-opp-meta">
+        <span>Güneş ${o.sunElevation.toFixed(0)}°</span>
+        <span>Alt ${o.altKm ? o.altKm.toFixed(0) + ' km' : ''}</span>
+        ${o.cloudCover ? `<span class="ip3-cloud ${cloudClass3d(o.cloudCover.total)}" title="Bulut: ${o.cloudCover.total}%">☁ ${o.cloudCover.total}%</span>` : ''}
+      </div>
+      <div class="ip3-opp-sat" style="color:${o.sat.color};">● ${esc(o.sat.name)}</div>
+    `;
+    card.addEventListener('click', () => selectOpp(i));
+    strip.append(card);
+  }
+}
+
+function oppDescription(o, idx) {
+  return `
+    <div style="font-size:12px;">
+      <div><b>${esc(o.sat.name)}</b> #${o.sat.noradId}</div>
+      <div>${fmtDate(o.time)} ${fmtTime(o.time)}</div>
+      <div>Roll: ${o.rollDeg.toFixed(1)}°</div>
+      <div>Off-Nadir: ${o.offNadirDeg.toFixed(1)}°</div>
+      <div>Güneş: ${o.sunElevation.toFixed(1)}°</div>
+      ${o.cloudCover ? `<div>Bulut: ${o.cloudCover.total}%</div>` : ''}
+      <div>Puan: ${o.score.toFixed(0)}/100 (${o.stars}/5)</div>
+    </div>
+  `;
+}
+
+// ───────── Helpers ─────────
+function cloudClass3d(pct) {
+  if (pct <= 20) return 'cloud-clear';
+  if (pct <= 50) return 'cloud-part';
+  if (pct <= 80) return 'cloud-cloudy';
+  return 'cloud-over';
+}
+
+function el(tag, cls) {
+  const x = document.createElement(tag);
+  if (cls) x.className = cls;
+  return x;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function fmtDate(d) {
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function fmtTime(d) {
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+function cesiumColor(cssColor, alpha) {
+  return Cesium.Color.fromCssColorString(cssColor).withAlpha(alpha);
+}
+
+/**
+ * Satellite heading at time `t` (radians, measured clockwise from north),
+ * derived from the ground projection of the orbit 1s ahead.
+ */
+function satHeadingAt(satrec, t) {
+  const now = propagateAt(satrec, t);
+  const ahead = propagateAt(satrec, new Date(t.getTime() + 1000));
+  if (!now || !ahead) return 0;
+  const φ1 = now.lat * Math.PI / 180;
+  const φ2 = ahead.lat * Math.PI / 180;
+  const Δλ = (ahead.lon - now.lon) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return Math.atan2(y, x);
+}
+
+/**
+ * 4 corners [lat, lon] of a rectangle centered on (tgtLat, tgtLon),
+ * with along-track length = frameKm aligned with `headingRad`, and
+ * cross-track width = swathKm. Uses small-angle flat-earth math which
+ * is accurate enough for sensor footprints up to a few hundred km.
+ *
+ * Returns corners in order: [tl, tr, br, bl] where "t"op is forward
+ * along the satellite heading.
+ */
+function cornersAroundTarget(tgtLat, tgtLon, headingRad, swathKm, frameKm) {
+  const cosLat = Math.cos(tgtLat * Math.PI / 180);
+  const degPerKmLat = 1 / 111.0;
+  const degPerKmLon = 1 / (111.0 * Math.max(cosLat, 0.01));
+
+  // Unit vectors in (north, east) coords
+  const alongN = Math.cos(headingRad);
+  const alongE = Math.sin(headingRad);
+  const crossN = Math.cos(headingRad + Math.PI / 2); // = -sin(h)
+  const crossE = Math.sin(headingRad + Math.PI / 2); // =  cos(h)
+
+  const a = frameKm / 2;
+  const c = swathKm / 2;
+
+  // [along, cross] offsets for tl, tr, br, bl
+  const offsets = [
+    [+a, -c],
+    [+a, +c],
+    [-a, +c],
+    [-a, -c],
+  ];
+
+  return offsets.map(([oa, oc]) => {
+    const dN = alongN * oa + crossN * oc;
+    const dE = alongE * oa + crossE * oc;
+    const dLat = dN * degPerKmLat;
+    const dLon = dE * degPerKmLon;
+    return [tgtLat + dLat, tgtLon + dLon];
+  });
+}
+
+function showToast(message, type = 'info') {
+  document.querySelectorAll('.ip3-toast').forEach(t => t.remove());
+  const t = el('div', `ip3-toast ${type}`);
+  t.textContent = message;
+  document.body.append(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ───────── Start ─────────
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
