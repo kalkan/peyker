@@ -48,22 +48,22 @@ function ensureWorker() {
   return worker;
 }
 
-export async function predictPassesInWorker(tleLine1, tleLine2, gs, days, stepSeconds) {
+export async function predictPassesInWorker(tleLine1, tleLine2, gs, days, stepSeconds, startTime) {
   const w = ensureWorker();
   if (!w) {
     // Fall back to synchronous on the main thread
     const satrec = parseTLE(tleLine1, tleLine2);
-    return predictPasses(satrec, gs, days, stepSeconds);
+    return predictPasses(satrec, gs, days, stepSeconds, startTime);
   }
   try {
     return await new Promise((resolve, reject) => {
       const id = nextId++;
       pending.set(id, { resolve, reject });
-      w.postMessage({ id, type: 'predictPasses', tle: { line1: tleLine1, line2: tleLine2 }, gs, days, stepSeconds });
+      w.postMessage({ id, type: 'predictPasses', tle: { line1: tleLine1, line2: tleLine2 }, gs, days, stepSeconds, startTime });
     });
   } catch (err) {
     // Worker broke mid-flight — fall back
     const satrec = parseTLE(tleLine1, tleLine2);
-    return predictPasses(satrec, gs, days, stepSeconds);
+    return predictPasses(satrec, gs, days, stepSeconds, startTime);
   }
 }

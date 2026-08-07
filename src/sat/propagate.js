@@ -331,13 +331,15 @@ export function getLookAnglesCached(satrec, date, gs) {
  *
  * @param {Object} satrec - satellite.js satrec object
  * @param {Object} gs - ground station { lat, lon, alt }
- * @param {number} days - how many days to look ahead
+ * @param {number} days - how many days to sweep from startTime
  * @param {number} [stepSeconds=30] - coarse scan step
+ * @param {number} [startTime=Date.now()] - sweep start (epoch ms); pass a
+ *   past timestamp to compute historical passes
  * @returns {Array<{ aos: Date, los: Date, tca: Date, maxEl: number }>}
  */
-export function predictPasses(satrec, gs, days, stepSeconds = 60) {
+export function predictPasses(satrec, gs, days, stepSeconds = 60, startTime = Date.now()) {
   const passes = [];
-  const start = Date.now();
+  const start = startTime;
   const end = start + days * 86400000;
   const coarseStepMs = stepSeconds * 1000;
   const fineStepMs = 10 * 1000;  // inside a pass: 10 s steps to locate TCA accurately

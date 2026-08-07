@@ -22,6 +22,7 @@ import { PRESETS, DEFAULT_GROUND_STATIONS, TRACK_COLORS } from './sat/presets.js
 
 const STORAGE_KEY = 'sat-groundtrack-state';
 const ANALYSIS_DAYS = 30;
+const HISTORY_DAYS = 30;   // how far back the optional history view sweeps
 
 let satellites = [];   // { noradId, name, color, satrec }
 let groundStation = null;
@@ -39,7 +40,7 @@ const SOUND_KEY = 'pt-sound-enabled';
 const NOTIF_KEY = 'pt-notif-enabled';
 const TTS_KEY = 'pt-tts-enabled';
 const WAKE_KEY = 'pt-wake-enabled';
-const FILTER_KEY = 'pt-filter';  // JSON: { minEl, visibleOnly, sortBy }
+const FILTER_KEY = 'pt-filter';  // JSON: { minEl, visibleOnly, sortBy, showHistory }
 const CHART_VIEW_KEY = 'pt-chart-view';  // 'polar' | 'elvt'
 const CHIME_WINDOW_MS = 60_000;  // fire within 1 min of AOS/LOS (survives tab throttling)
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;  // drop notified keys older than 1 day
@@ -58,7 +59,7 @@ let spokenKeys = new Set();        // same pattern for TTS events
 let allSatNextPass = null;         // { satIdx, aos, pass } — soonest pass across all sats
 
 // Filter + sort state for the pass list (default: no filter, chronological)
-let filter = { minEl: 0, visibleOnly: false, sortBy: 'time' };  // sortBy: 'time' | 'score'
+let filter = { minEl: 0, visibleOnly: false, sortBy: 'time', showHistory: false };  // sortBy: 'time' | 'score'
 let chartView = 'polar';  // 'polar' | 'elvt'
 
 function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
@@ -70,6 +71,12 @@ function passKey(p) { return p.aos.getTime() + ':' + p.los.getTime(); }
 function passCacheKey(sat, gs) {
   const tleEpoch = sat.satrec ? `${sat.satrec.epochyr}.${sat.satrec.epochdays.toFixed(6)}` : '0';
   return `passes:${sat.noradId}:${tleEpoch}:${gs.lat.toFixed(3)},${gs.lon.toFixed(3)}:${ANALYSIS_DAYS}`;
+}
+
+/** Same identity scheme, but for the backwards (history) sweep. */
+function historyCacheKey(sat, gs) {
+  const tleEpoch = sat.satrec ? `${sat.satrec.epochyr}.${sat.satrec.epochdays.toFixed(6)}` : '0';
+  return `passes-hist:${sat.noradId}:${tleEpoch}:${gs.lat.toFixed(3)},${gs.lon.toFixed(3)}:${HISTORY_DAYS}`;
 }
 
 /** Serialize Date fields to ISO strings for JSON/IDB storage. */
@@ -621,6 +628,41 @@ async function loadTLEAndCompute() {
   computePasses();
 }
 
+/**
+ * Compute the last HISTORY_DAYS of passes by sweeping SGP4 backwards from
+ * now. Uses the same worker + IDB cache pattern as the forward sweep.
+ * Note: back-propagating the current TLE degrades accuracy the further
+ * back it goes — results are approximate near the 30-day edge.
+ */
+async function computeHistoryPasses(sat) {
+  const cacheKey = historyCacheKey(sat, groundStation);
+  const now = Date.now();
+  const cached = await idbGet(cacheKey);
+  if (cached && cached.expiresAt > now && Array.isArray(cached.passes)) {
+    return deserializePasses(cached.passes);
+  }
+
+  const startTime = now - HISTORY_DAYS * 86400000;
+  let hist;
+  if (sat.tleLine1 && sat.tleLine2) {
+    try {
+      hist = await predictPassesInWorker(sat.tleLine1, sat.tleLine2, groundStation, HISTORY_DAYS, undefined, startTime);
+    } catch {
+      hist = predictPasses(sat.satrec, groundStation, HISTORY_DAYS, 60, startTime);
+    }
+  } else {
+    hist = predictPasses(sat.satrec, groundStation, HISTORY_DAYS, 60, startTime);
+  }
+  // Keep only fully completed passes — the forward sweep owns everything else
+  hist = hist.filter(p => p.los.getTime() <= now);
+  enrichPasses(sat.satrec, groundStation, hist);
+  idbSet(cacheKey, {
+    expiresAt: now + 6 * 3600 * 1000,
+    passes: serializePasses(hist),
+  });
+  return hist;
+}
+
 async function computePasses() {
   const sat = satellites[selectedSatIdx];
   if (!sat?.satrec || !groundStation) { passes = []; renderAll(); return; }
@@ -653,6 +695,16 @@ async function computePasses() {
       expiresAt: now + 6 * 3600 * 1000,
       passes: serializePasses(passes),
     });
+  }
+
+  // Prepend last-month history when the user has the history view enabled.
+  // History passes all have los <= now, so the chime-suppression loop below
+  // marks them as already notified and they never trigger alerts.
+  if (filter.showHistory) {
+    try {
+      const hist = await computeHistoryPasses(sat);
+      passes = [...hist, ...passes];
+    } catch { /* history is best-effort; forward list still renders */ }
   }
 
   // Suppress chimes for transitions that happened before we had the pass list
@@ -1415,10 +1467,24 @@ function renderListHeader(header, sat, filteredCount) {
   const totalTxt = filteredCount === passes.length
     ? `${passes.length} geçiş`
     : `${filteredCount} / ${passes.length} geçiş`;
-  title.textContent = sat ? `${sat.name} — ${totalTxt} (${ANALYSIS_DAYS} gün)` : 'Uydu seciniz';
+  const windowTxt = filter.showHistory ? `-${HISTORY_DAYS} / +${ANALYSIS_DAYS} gün` : `${ANALYSIS_DAYS} gün`;
+  title.textContent = sat ? `${sat.name} — ${totalTxt} (${windowTxt})` : 'Uydu seciniz';
   header.append(title);
 
   const controls = el('div', 'pt-list-controls');
+
+  // History toggle — include the past month's completed passes
+  const histBtn = el('button', 'pt-chip' + (filter.showHistory ? ' active' : ''));
+  histBtn.innerHTML = '🕐 Geçmiş';
+  histBtn.title = `Son ${HISTORY_DAYS} günün tamamlanmış geçişlerini de listele (TLE geriye yayılımı yaklaşıktır)`;
+  histBtn.addEventListener('click', () => {
+    filter.showHistory = !filter.showHistory;
+    saveFilter();
+    histBtn.disabled = true;
+    histBtn.innerHTML = '⏳ Geçmiş';
+    computePasses();  // re-assembles the list and re-renders the header
+  });
+  controls.append(histBtn);
 
   // Visible-only toggle
   const visBtn = el('button', 'pt-chip' + (filter.visibleOnly ? ' active' : ''));
