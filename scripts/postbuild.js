@@ -40,6 +40,15 @@ for (const [src, dst] of PAGES) {
   console.log(`  Copied dist/${src}.html → ${dst}.html`);
 }
 
+// PWA files land in dist root via Vite's public/ passthrough
+const PWA_FILES = ['manifest.webmanifest', 'sw.js', 'icon.svg'];
+for (const f of PWA_FILES) {
+  const src = join(dist, f);
+  if (!existsSync(src)) continue;
+  copyFileSync(src, join(root, f));
+  console.log(`  Copied dist/${f} → ${f}`);
+}
+
 // Copy assets
 const assetsDir = join(dist, 'assets');
 const targetAssets = join(root, 'assets');
