@@ -28,6 +28,7 @@ import { describeTleAge } from './sat/tle-meta.js';
 import { idbGet, idbSet, idbCleanupExpired } from './sat/idb-cache.js';
 import { buildIcs, downloadIcs } from './util/ics-export.js';
 import { fetchCloudForecast, enrichWithCloud } from './util/cloud-forecast.js';
+import { buildOpportunityKml, buildOpportunityGeoJson, downloadTextFile } from './util/geo-export.js';
 import { installKeyboardShortcuts, bind, openHelp } from './util/keyboard-shortcuts.js';
 import './styles/shared.css';
 
@@ -61,7 +62,10 @@ let sortBy = 'time';          // 'time' | 'score' | 'roll' | 'sun' | 'cloud'
 let filterMinSun = -2;        // sun elevation threshold for displayed opps
 let filterRollPct = 100;      // % of maxRollDeg accepted (display filter)
 let filterMaxCloud = 100;     // max cloud cover % (display filter)
+let includeHistory = false;   // extend the sweep 30 days into the past
 let timezone = 'Europe/Istanbul';
+
+const HISTORY_OFFSET_DAYS = 30;
 
 const TIMEZONES = [
   { id: 'Europe/Istanbul', label: 'TRT (UTC+3)' },
@@ -80,6 +84,7 @@ function loadPrefs() {
     if (typeof p.filterMinSun === 'number') filterMinSun = p.filterMinSun;
     if (typeof p.filterRollPct === 'number') filterRollPct = p.filterRollPct;
     if (typeof p.filterMaxCloud === 'number') filterMaxCloud = p.filterMaxCloud;
+    if (typeof p.includeHistory === 'boolean') includeHistory = p.includeHistory;
     if (typeof p.timezone === 'string') timezone = p.timezone;
   } catch {}
 }
@@ -87,7 +92,7 @@ function loadPrefs() {
 function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
-      maxRollDeg, horizonDays, pitchDeg, presetId, sortBy, filterMinSun, filterRollPct, filterMaxCloud, timezone,
+      maxRollDeg, horizonDays, pitchDeg, presetId, sortBy, filterMinSun, filterRollPct, filterMaxCloud, includeHistory, timezone,
     }));
   } catch {}
 }
@@ -270,7 +275,7 @@ function cacheKey(sat, settings) {
   // TLE epoch is the dominant freshness signal — bake it in along with the
   // tuning parameters so a settings tweak invalidates the entry.
   const epoch = sat.tle?.line1?.slice(18, 32) || '';
-  return `opp:${sat.noradId}:${targetLat.toFixed(4)}:${targetLon.toFixed(4)}:r${settings.MAX_ROLL_DEG}:d${settings.SEARCH_HORIZON_DAYS}:e${epoch}`;
+  return `opp:${sat.noradId}:${targetLat.toFixed(4)}:${targetLon.toFixed(4)}:r${settings.MAX_ROLL_DEG}:d${settings.SEARCH_HORIZON_DAYS}:h${settings.SEARCH_START_OFFSET_DAYS || 0}:e${epoch}`;
 }
 
 async function tryCachedResult(sat, settings) {
@@ -318,7 +323,14 @@ async function runAnalysis(forceRefresh = false) {
   renderRightContent();
   renderLeftContent();
 
-  const settings = { MAX_ROLL_DEG: maxRollDeg, SEARCH_HORIZON_DAYS: horizonDays };
+  const settings = {
+    MAX_ROLL_DEG: maxRollDeg,
+    SEARCH_HORIZON_DAYS: horizonDays,
+    SEARCH_START_OFFSET_DAYS: includeHistory ? HISTORY_OFFSET_DAYS : 0,
+    // History sweeps cover a much longer window — raise the cap so past
+    // hits can't crowd out upcoming opportunities (dedupe is chronological).
+    MAX_OPPORTUNITIES: includeHistory ? 80 : 20,
+  };
   const partials = new Map();
   const tasks = [];
 
@@ -784,6 +796,22 @@ function buildSettingsSection() {
   r1.append(dayField);
   sec.append(r1);
 
+  // History toggle — sweep the last 30 days too
+  const histField = el('div', 'ip-field');
+  const histLbl = el('label', 'ip-checkbox-label');
+  const histCb = el('input');
+  histCb.type = 'checkbox';
+  histCb.checked = includeHistory;
+  histCb.addEventListener('change', () => {
+    includeHistory = histCb.checked;
+    savePrefs();
+    autoAnalyze();
+  });
+  histLbl.append(histCb, document.createTextNode(` Geçmişi dahil et (son ${HISTORY_OFFSET_DAYS} gün)`));
+  histLbl.title = 'Taramayı 30 gün geriye uzatır — kaçırılan fırsat analizi için. TLE geriye yayılımı yaklaşıktır.';
+  histField.append(histLbl);
+  sec.append(histField);
+
   // Pitch slider — shown only when the active preset supports it.
   const preset = getPreset(presetId);
   if (preset.maxPitchDeg > 0) {
@@ -1006,6 +1034,18 @@ function buildRightHeader() {
   csvBtn.title = 'CSV olarak indir — kısayol: C';
   csvBtn.addEventListener('click', () => exportCsv());
   actions.append(csvBtn);
+
+  const kmlBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
+  kmlBtn.textContent = 'KML';
+  kmlBtn.title = 'Google Earth için KML olarak indir';
+  kmlBtn.addEventListener('click', () => exportGeo('kml'));
+  actions.append(kmlBtn);
+
+  const geoBtn = el('button', 'ip-btn ip-btn-ghost ip-btn-sm');
+  geoBtn.textContent = 'GeoJSON';
+  geoBtn.title = 'QGIS vb. için GeoJSON olarak indir';
+  geoBtn.addEventListener('click', () => exportGeo('geojson'));
+  actions.append(geoBtn);
 
   hdr.append(actions);
   return hdr;
@@ -1269,6 +1309,28 @@ function exportIcs() {
   const ics = buildIcs(events, { calendarName: `Peyker — Görüntüleme (${targetName || 'hedef'})` });
   downloadIcs(`imaging_opportunities_${targetLat.toFixed(2)}_${targetLon.toFixed(2)}.ics`, ics);
   toast(`${events.length} fırsat ICS olarak indirildi`, 'success');
+}
+
+function exportGeo(format) {
+  if (!analysisResults) { toast('Önce analiz çalıştırın', 'error'); return; }
+  const filtered = analysisResults
+    .map(r => ({ ...r, opportunities: applyFilters(r.opportunities) }))
+    .filter(r => r.opportunities.length > 0);
+  if (filtered.length === 0) { toast('Dışa aktarılacak fırsat yok', 'error'); return; }
+  for (const r of filtered) {
+    for (const o of r.opportunities) {
+      if (!o._score) o._score = computeOpportunityScore(o, { maxRollDeg });
+    }
+  }
+  const target = { lat: targetLat, lon: targetLon, name: targetName };
+  const base = `imaging_opportunities_${targetLat.toFixed(2)}_${targetLon.toFixed(2)}`;
+  if (format === 'kml') {
+    downloadTextFile(`${base}.kml`, buildOpportunityKml(filtered, target), 'application/vnd.google-earth.kml+xml');
+    toast('KML indirildi', 'success');
+  } else {
+    downloadTextFile(`${base}.geojson`, buildOpportunityGeoJson(filtered, target), 'application/geo+json');
+    toast('GeoJSON indirildi', 'success');
+  }
 }
 
 /* ───── Helpers ───── */

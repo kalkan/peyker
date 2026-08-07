@@ -136,6 +136,22 @@ body {
   margin-bottom: 8px;
 }
 
+.ip-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ip-text, #c9d1d9);
+  cursor: pointer;
+  user-select: none;
+}
+.ip-checkbox-label input[type="checkbox"] {
+  accent-color: #58a6ff;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 /* === Location search === */
 
 .ip-search-wrap {

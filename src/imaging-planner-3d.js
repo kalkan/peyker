@@ -21,7 +21,8 @@ import './styles/a11y.css';
 import './styles/imaging-planner-3d.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js';
-import { findOpportunities, DEFAULT_OPPORTUNITY_CONFIG } from './sat/opportunity.js';
+import { DEFAULT_OPPORTUNITY_CONFIG } from './sat/opportunity.js';
+import { analyzeAllInPool } from './sat/opportunity-worker-client.js';
 import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
 import { computeOpportunityScore } from './sat/opportunity-score.js';
 import { fetchCloudForecast, enrichWithCloud } from './util/cloud-forecast.js';
@@ -741,22 +742,28 @@ async function runAnalysis() {
   const cloudPromise = fetchCloudForecast(targetLat, targetLon, 7);
   const totalSats = satellites.length;
 
-  for (let i = 0; i < satellites.length; i++) {
-    const sat = satellites[i];
-    try {
-      const opps = await findOpportunities(
-        sat.satrec, targetLat, targetLon, settings,
-        (p) => {
-          progress = (i + p) / totalSats;
-          updateProgress();
-        }
-      );
-      for (const o of opps) {
+  // Worker pool — all satellites in parallel, UI thread stays free
+  const progressMap = new Map();
+  try {
+    const results = await analyzeAllInPool(satellites, targetLat, targetLon, settings, {
+      onProgress: (noradId, f) => {
+        progressMap.set(noradId, f);
+        let sum = 0;
+        for (const v of progressMap.values()) sum += v;
+        progress = sum / totalSats;
+        updateProgress();
+      },
+    });
+    for (const r of results) {
+      if (r.status === 'error') { console.warn(`Analiz hatası ${r.name}:`, r.error); continue; }
+      const sat = satellites.find(s => s.noradId === r.noradId);
+      if (!sat) continue;
+      for (const o of r.opportunities) {
         opportunities.push({ ...o, sat, score: 0, stars: 0 });
       }
-    } catch (err) {
-      console.warn(`Analiz hatası ${sat.name}:`, err);
     }
+  } catch (err) {
+    console.warn('Havuz analizi hatası:', err);
   }
 
   opportunities.sort((a, b) => a.time.getTime() - b.time.getTime());

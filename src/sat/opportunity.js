@@ -22,6 +22,7 @@ import { sunElevation } from './sun.js';
 export const DEFAULT_OPPORTUNITY_CONFIG = {
   MAX_ROLL_DEG: 5.0,
   SEARCH_HORIZON_DAYS: 7,
+  SEARCH_START_OFFSET_DAYS: 0,  // >0 shifts the sweep start into the past
   COARSE_STEP_SEC: 10,
   REFINE_STEP_SEC: 1,
   REFINE_WINDOW_SEC: 180,
@@ -64,8 +65,9 @@ export async function findOpportunities(satrec, targetLat, targetLon, settings =
   // Generous prefilter margin so we don't miss edge passes at coarse step.
   const prefilterDeg = Math.max(maxRoll + 15, 20);
 
-  const now = new Date();
-  const endMs = now.getTime() + horizonDays * 86400_000;
+  const offsetDays = cfg.SEARCH_START_OFFSET_DAYS || 0;
+  const now = new Date(Date.now() - offsetDays * 86400_000);
+  const endMs = now.getTime() + (horizonDays + offsetDays) * 86400_000;
   const totalMs = endMs - now.getTime();
 
   // ── Phase 1: coarse scan, track below-prefilter windows ─────────
