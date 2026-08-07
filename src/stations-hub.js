@@ -2,6 +2,7 @@
  * Stations Hub — Tabbed wrapper for GS + Antenna tools.
  */
 
+import './styles/a11y.css';
 import './styles/hub.css';
 
 const TABS = [

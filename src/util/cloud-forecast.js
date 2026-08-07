@@ -14,6 +14,7 @@ const CACHE_TTL = 30 * 60_000;
  * Returns { times[], total[], low[], mid[], high[] } or null on error.
  */
 export async function fetchCloudForecast(lat, lon, days = 7) {
+  days = Math.max(1, Math.min(16, Math.ceil(days)));  // Open-Meteo caps at 16
   const key = `${lat.toFixed(2)},${lon.toFixed(2)},${days}`;
   const cached = CACHE.get(key);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) return cached;

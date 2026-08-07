@@ -4,6 +4,7 @@
  * fetches TLEs, and shows pass predictions + overlap analysis.
  */
 
+import './styles/a11y.css';
 import './styles/mobile.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, predictPasses } from './sat/propagate.js';

@@ -478,7 +478,7 @@ body {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
-  z-index: 9999;
+  z-index: 10010;
   animation: ip3-slide-up 0.3s ease;
 }
 .ip3-toast.success { background: #238636; color: #fff; }

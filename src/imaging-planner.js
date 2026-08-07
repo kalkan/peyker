@@ -8,6 +8,7 @@
  */
 
 import 'leaflet/dist/leaflet.css';
+import './styles/a11y.css';
 import './styles/imaging-planner.css';
 import L from 'leaflet';
 
@@ -386,7 +387,11 @@ async function runAnalysis(forceRefresh = false) {
 
       const forecast = await cloudPromise;
       if (forecast) {
-        for (const r of analysisResults) enrichWithCloud(r.opportunities, forecast);
+        for (const r of analysisResults) {
+          enrichWithCloud(r.opportunities, forecast);
+          // Scores cached during progress renders predate cloud data — recompute
+          for (const o of r.opportunities) o._score = null;
+        }
       }
     }
   } catch (err) {

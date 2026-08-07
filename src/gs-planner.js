@@ -7,6 +7,7 @@
  */
 
 import 'leaflet/dist/leaflet.css';
+import './styles/a11y.css';
 import './styles/gs-planner.css';
 import L from 'leaflet';
 

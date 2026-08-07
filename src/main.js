@@ -4,6 +4,7 @@
  */
 
 import 'leaflet/dist/leaflet.css';
+import './styles/a11y.css';
 import './styles/main.css';
 import './styles/shared.css';
 import { initMap, toggleCoverage, refreshGsMarkers, getMap } from './map/setup.js';

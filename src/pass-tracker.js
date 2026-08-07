@@ -9,6 +9,7 @@
  *  - Auto-refresh every minute
  */
 
+import './styles/a11y.css';
 import './styles/pass-tracker.css';
 
 import { fetchTLE } from './sat/fetch.js';

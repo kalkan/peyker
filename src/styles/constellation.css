@@ -267,7 +267,7 @@ body {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
-  z-index: 9999;
+  z-index: 10010;
 }
 .con-toast.success { background: #238636; color: #fff; }
 .con-toast.error { background: #da3633; color: #fff; }
@@ -287,4 +287,11 @@ body {
   color: #e6edf3;
   z-index: 5;
   backdrop-filter: blur(6px);
+}
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 900px) {
+  #constellation-app { flex-direction: column; }
+  .con-panel { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid #30363d; }
+  .con-viewer { height: 55vh; min-height: 0; }
 }

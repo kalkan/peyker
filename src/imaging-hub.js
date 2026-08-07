@@ -5,6 +5,7 @@
  * 3D) instead of browsing nested tabs. Cards link out to each planner.
  */
 
+import './styles/a11y.css';
 import './styles/hub.css';
 import './styles/imaging-hub.css';
 

@@ -17,6 +17,7 @@
  * planner; the 2D version remains the primary tool.
  */
 
+import './styles/a11y.css';
 import './styles/imaging-planner-3d.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt, computeFootprintRect } from './sat/propagate.js';
@@ -751,8 +752,7 @@ async function runAnalysis() {
         }
       );
       for (const o of opps) {
-        const { score, stars } = computeOpportunityScore(o, { maxRollDeg: rollDeg });
-        opportunities.push({ ...o, sat, score, stars });
+        opportunities.push({ ...o, sat, score: 0, stars: 0 });
       }
     } catch (err) {
       console.warn(`Analiz hatası ${sat.name}:`, err);
@@ -763,6 +763,13 @@ async function runAnalysis() {
 
   const forecast = await cloudPromise;
   if (forecast) enrichWithCloud(opportunities, forecast);
+
+  // Score after cloud enrichment so the forecast feeds the star rating
+  for (const o of opportunities) {
+    const { score, stars } = computeOpportunityScore(o, { maxRollDeg: rollDeg });
+    o.score = score;
+    o.stars = stars;
+  }
 
   running = false;
   progress = 1;

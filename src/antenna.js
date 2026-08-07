@@ -3,6 +3,7 @@
  * Shows how the ground station antenna tracks a satellite during a pass.
  */
 
+import './styles/a11y.css';
 import './styles/antenna.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, predictPasses, getLookAngles } from './sat/propagate.js';

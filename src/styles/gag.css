@@ -257,6 +257,11 @@ body {
 .gag-result-meta span {
   margin-right: 10px;
 }
+.gag-cloud { font-weight: 700; }
+.gag-cloud.cloud-clear  { color: #7ee787; }
+.gag-cloud.cloud-part   { color: #d29922; }
+.gag-cloud.cloud-cloudy { color: #f0883e; }
+.gag-cloud.cloud-over   { color: #f85149; }
 .gag-result-coverage {
   margin-top: 4px;
   height: 4px;
@@ -332,7 +337,7 @@ body {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
-  z-index: 9999;
+  z-index: 10010;
   animation: gag-slide-up 0.3s ease;
 }
 .gag-toast.success { background: #238636; color: #fff; }

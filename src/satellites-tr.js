@@ -7,6 +7,7 @@
  * bir sıradaki uyduya geçilir; prev/next butonları ile manuel de gezilir.
  */
 
+import './styles/a11y.css';
 import './styles/satellites-tr.css';
 
 const SATS = [

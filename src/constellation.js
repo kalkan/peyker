@@ -6,6 +6,7 @@
  * persisted to localStorage.
  */
 
+import './styles/a11y.css';
 import './styles/constellation.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt } from './sat/propagate.js';

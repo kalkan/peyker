@@ -1,4 +1,4 @@
-import"./modulepreload-polyfill-B5Qt9EMX.js";import{f as M,b as B,e as D,a as E}from"./fetch-Boi2T_jM.js";let g=null,d=[],y=[],L=null,z=null,v=null,C=new Set,T=!0,w=30;const H="peyker-constellations";function N(){const t=document.getElementById("constellation-app");if(!t)return;const e=document.createElement("div");e.className="con-panel",e.innerHTML=`
+import"./a11y-lyHZvV_S.js";import{f as M,b as B,e as D,a as E}from"./fetch-Boi2T_jM.js";let g=null,d=[],y=[],L=null,z=null,v=null,C=new Set,T=!0,w=30;const H="peyker-constellations";function N(){const t=document.getElementById("constellation-app");if(!t)return;const e=document.createElement("div");e.className="con-panel",e.innerHTML=`
     <div class="con-header">
       <h1>Takım Uydu</h1>
       <div class="con-nav">

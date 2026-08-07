@@ -278,9 +278,16 @@ body {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
-  z-index: 9999;
+  z-index: 10010;
 }
 .anim-toast.success { background: #238636; color: #fff; }
 .anim-toast.error { background: #da3633; color: #fff; }
 .anim-toast.warning { background: #9e6a03; color: #fff; }
 .anim-toast.info { background: #1f6feb; color: #fff; }
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 900px) {
+  #animation-app { flex-direction: column; }
+  .anim-panel { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid #30363d; }
+  .anim-viewer { height: 55vh; min-height: 0; }
+}

@@ -12,12 +12,14 @@
  * coverage as early as possible.
  */
 
+import './styles/a11y.css';
 import './styles/gag.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt } from './sat/propagate.js';
 import { SENSOR_PRESETS, getPreset } from './sat/sensor-presets.js';
 import { getColor } from './sat/presets.js';
 import { sunElevation } from './sat/sun.js';
+import { fetchCloudForecast, getCloudAtTime } from './util/cloud-forecast.js';
 
 /* global L */
 
@@ -434,6 +436,7 @@ function buildResultsSection() {
         <span>Roll ${p.minRollDeg.toFixed(1)}–${p.maxRollDeg.toFixed(1)}°</span>
         <span>Alt ${p.altKm.toFixed(0)} km</span>
         <span>Güneş ${p.sunElev.toFixed(0)}°</span>
+        ${p.cloudCover ? `<span class="gag-cloud ${cloudClass(p.cloudCover.total)}" title="Bulutluluk (toplam/alçak/orta/yüksek): ${p.cloudCover.total}% / ${p.cloudCover.low}% / ${p.cloudCover.mid}% / ${p.cloudCover.high}%">☁ ${p.cloudCover.total}%</span>` : ''}
       </div>
       <div class="gag-result-meta">
         <span>Yeni fayans: <b style="color:${color};">${p.newTileIds.length}</b></span>
@@ -512,6 +515,7 @@ function generateXML() {
     xml += `      <Time>${p.time.toISOString()}</Time>\n`;
     xml += `      <AltitudeKm>${p.altKm.toFixed(1)}</AltitudeKm>\n`;
     xml += `      <SunElevation>${p.sunElev.toFixed(1)}</SunElevation>\n`;
+    if (p.cloudCover) xml += `      <CloudCover>${p.cloudCover.total}</CloudCover>\n`;
     xml += `      <RollDeg min="${p.minRollDeg.toFixed(2)}" max="${p.maxRollDeg.toFixed(2)}" />\n`;
     xml += `      <StripOffsetKm>${p.stripOffsetKm.toFixed(2)}</StripOffsetKm>\n`;
     xml += `      <CumulativeCoverage>${(p.cumCoverage * 100).toFixed(1)}</CumulativeCoverage>\n`;
@@ -586,6 +590,11 @@ async function runAnalysis() {
     setProgress(0.02, `${tiles.length} karo oluşturuldu`);
     await yieldToUI();
 
+    // Bulut tahmini paralelde başlasın — karo merkezine göre tek çağrı
+    const tileCenterLat = tiles.reduce((s, t) => s + t.lat, 0) / tiles.length;
+    const tileCenterLon = tiles.reduce((s, t) => s + t.lon, 0) / tiles.length;
+    const cloudPromise = fetchCloudForecast(tileCenterLat, tileCenterLon, searchDays);
+
     // ─── Adım 2: Tüm orbit geçişlerinin yer izini bul ───
     const orbitTracks = await findOrbitPasses(sat, searchDays);
     if (orbitTracks.length === 0) {
@@ -619,6 +628,12 @@ async function runAnalysis() {
       result.satColor = sat.color;
       result.track = track;
       passes.push(result);
+    }
+
+    // Bulut tahminini pass'lere işle (best-effort)
+    const forecast = await cloudPromise;
+    if (forecast) {
+      for (const p of passes) p.cloudCover = getCloudAtTime(forecast, p.time);
     }
 
     completionInfo = {
@@ -1170,6 +1185,13 @@ function interpolateTrack(track, maxGapKm) {
 }
 
 // ───────── Helpers ─────────
+function cloudClass(pct) {
+  if (pct <= 20) return 'cloud-clear';
+  if (pct <= 50) return 'cloud-part';
+  if (pct <= 80) return 'cloud-cloudy';
+  return 'cloud-over';
+}
+
 function el(tag, cls) {
   const x = document.createElement(tag);
   if (cls) x.className = cls;

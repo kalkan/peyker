@@ -1690,7 +1690,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 9999;
+  z-index: 10010;
   background: var(--bg-glass);
   backdrop-filter: blur(var(--blur)) saturate(1.5);
   -webkit-backdrop-filter: blur(var(--blur)) saturate(1.5);

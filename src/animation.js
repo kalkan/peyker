@@ -15,6 +15,7 @@
  *     "Durdur" offers download
  */
 
+import './styles/a11y.css';
 import './styles/animation.css';
 import { fetchTLE } from './sat/fetch.js';
 import { parseTLE, propagateAt } from './sat/propagate.js';

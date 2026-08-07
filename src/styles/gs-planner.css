@@ -297,9 +297,16 @@ body {
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 13px;
-  z-index: 9999;
+  z-index: 10010;
   opacity: 0;
   transition: opacity 0.3s;
 }
 
 .gsp-toast.show { opacity: 1; }
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 900px) {
+  #gs-planner-app { flex-direction: column; }
+  .gsp-panel { width: 100%; min-width: 0; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--gsp-border); }
+  .gsp-map-container { height: 55vh; min-height: 0; }
+}
