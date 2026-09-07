@@ -16,6 +16,7 @@
     "satellite.js": "^5.0.0"
   },
   "devDependencies": {
+    "sharp": "^0.35.4",
     "vite": "^5.4.0",
     "vitest": "^4.1.10"
   }

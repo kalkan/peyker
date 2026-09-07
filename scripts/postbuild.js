@@ -41,7 +41,10 @@ for (const [src, dst] of PAGES) {
 }
 
 // PWA files land in dist root via Vite's public/ passthrough
-const PWA_FILES = ['manifest.webmanifest', 'sw.js', 'icon.svg'];
+const PWA_FILES = [
+  'manifest.webmanifest', 'sw.js', 'icon.svg',
+  'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+];
 for (const f of PWA_FILES) {
   const src = join(dist, f);
   if (!existsSync(src)) continue;

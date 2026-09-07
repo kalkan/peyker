@@ -1,4 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+/**
+ * Generates the app icon set from a single SVG template:
+ *
+ *   public/icon.svg              rounded, browser tab / manifest "any"
+ *   public/apple-touch-icon.png  180×180 full-bleed (macOS Dock / iOS mask it)
+ *   public/icon-192.png          192×192 rounded, manifest
+ *   public/icon-512.png          512×512 rounded, manifest
+ *   public/icon-maskable-512.png 512×512 full-bleed, content in safe zone
+ *
+ * Run: node scripts/gen-icons.js  (requires devDependency `sharp`)
+ */
+
+import sharp from 'sharp';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pub = join(__dirname, '..', 'public');
+mkdirSync(pub, { recursive: true });
+
+/**
+ * @param {number} cornerR  background corner radius (0 = full bleed)
+ * @param {number} scale    content scale (maskable icons need a safe zone)
+ */
+function iconSvg(cornerR, scale = 1) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <radialGradient id="space" cx="35%" cy="25%" r="90%">
       <stop offset="0%" stop-color="#16213c"/>
@@ -20,12 +46,12 @@
       <stop offset="60%" stop-color="#1866c9"/>
       <stop offset="100%" stop-color="#0b3d8f"/>
     </linearGradient>
-    <clipPath id="bg"><rect width="512" height="512" rx="100"/></clipPath>
+    <clipPath id="bg"><rect width="512" height="512" rx="${cornerR}"/></clipPath>
   </defs>
 
   <g clip-path="url(#bg)">
     <rect width="512" height="512" fill="url(#space)"/>
-    <g transform="translate(256 256) scale(1) translate(-256 -256)">
+    <g transform="translate(256 256) scale(${scale}) translate(-256 -256)">
 
       <!-- stars -->
       <g fill="#ffffff">
@@ -76,4 +102,24 @@
       <path d="M 236 320 L 256 420 L 276 320 Z" fill="#58a6ff" opacity="0.28"/>
     </g>
   </g>
-</svg>
+</svg>`;
+}
+
+const rounded = iconSvg(100);
+const fullBleed = iconSvg(0);
+const maskable = iconSvg(0, 0.78);
+
+writeFileSync(join(pub, 'icon.svg'), rounded);
+
+const jobs = [
+  ['apple-touch-icon.png', fullBleed, 180],
+  ['icon-192.png', rounded, 192],
+  ['icon-512.png', rounded, 512],
+  ['icon-maskable-512.png', maskable, 512],
+];
+
+for (const [name, svg, size] of jobs) {
+  await sharp(Buffer.from(svg)).resize(size, size).png().toFile(join(pub, name));
+  console.log(`  ${name} (${size}×${size})`);
+}
+console.log('Icon set generated in public/.');
