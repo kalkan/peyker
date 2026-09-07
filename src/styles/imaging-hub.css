@@ -1,0 +1,221 @@
+/* imaging-hub.css — dashboard landing for imaging tools */
+
+body { overflow: auto; height: auto; min-height: 100vh; }
+
+.hub-app {
+  height: auto;
+  min-height: 100vh;
+}
+
+.hub-spacer { flex: 1; }
+
+.img-hub {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 22px 48px;
+  width: 100%;
+}
+
+.img-hub-hero {
+  text-align: left;
+  padding: 18px 4px 24px;
+}
+.img-hub-hero h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #e6edf3;
+  margin-bottom: 6px;
+}
+.img-hub-hero p {
+  font-size: 14px;
+  color: #8b949e;
+  max-width: 640px;
+}
+
+.img-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.img-card {
+  --card-color: #58a6ff;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #161b22 0%, #0f141a 100%);
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 16px 16px 14px;
+  color: #e6edf3;
+  text-decoration: none;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  min-height: 260px;
+}
+
+.img-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--card-color);
+  opacity: 0.7;
+}
+
+.img-card:hover:not(.disabled) {
+  transform: translateY(-2px);
+  border-color: var(--card-color);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45),
+              0 0 0 1px rgba(88, 166, 255, 0.06);
+}
+
+.img-card.disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.img-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.img-card-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card-color) 14%, transparent);
+  color: var(--card-color);
+  border: 1px solid color-mix(in srgb, var(--card-color) 28%, transparent);
+}
+
+.img-card-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(210, 153, 34, 0.18);
+  color: #d29922;
+  border: 1px solid rgba(210, 153, 34, 0.38);
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.img-card.disabled .img-card-badge {
+  background: rgba(139, 148, 158, 0.15);
+  color: #8b949e;
+  border-color: rgba(139, 148, 158, 0.35);
+}
+
+.img-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.img-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e6edf3;
+  line-height: 1.2;
+}
+
+.img-card-sub {
+  font-size: 12px;
+  color: var(--card-color);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.img-card-desc {
+  font-size: 12.5px;
+  color: #8b949e;
+  line-height: 1.45;
+  margin: 2px 0 6px;
+}
+
+.img-card-bullets {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 8px 0;
+}
+
+.img-card-bullets li {
+  font-size: 10.5px;
+  color: #c9d1d9;
+  background: rgba(110, 118, 129, 0.15);
+  border: 1px solid #30363d;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+
+.img-card-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--card-color);
+  background: color-mix(in srgb, var(--card-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card-color) 35%, transparent);
+  margin-top: 6px;
+  transition: background 0.15s;
+}
+
+.img-card:hover:not(.disabled) .img-card-cta {
+  background: color-mix(in srgb, var(--card-color) 22%, transparent);
+}
+
+.img-card.disabled .img-card-cta {
+  color: #8b949e;
+  background: rgba(110, 118, 129, 0.1);
+  border-color: #30363d;
+}
+
+.img-hub-foot {
+  margin-top: 32px;
+  padding: 14px 16px;
+  background: rgba(88, 166, 255, 0.04);
+  border: 1px solid rgba(88, 166, 255, 0.15);
+  border-radius: 10px;
+}
+
+.img-hub-foot-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #58a6ff;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.img-hub-foot-text {
+  font-size: 12.5px;
+  color: #8b949e;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .img-hub { padding: 16px 12px 32px; }
+  .img-hub-hero h1 { font-size: 20px; }
+  .img-card { min-height: 220px; }
+}

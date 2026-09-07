@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="theme-color" content="#0d1117" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Görüntüleme Planlayıcı 3D (Beta)</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/';</script>
+  <link href="https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/Cesium.js"></script>
+</head>
+<body>
+  <div id="imaging-planner-3d-app"></div>
+  <script type="module" src="/src/imaging-planner-3d.js"></script>
+</body>
+</html>

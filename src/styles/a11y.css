@@ -1,0 +1,23 @@
+/**
+ * Shared accessibility styles — imported by every page entry.
+ *
+ * Keyboard focus ring (WCAG 2.4.7): page styles widely use `outline: none`
+ * on :focus for mouse users; this restores a visible ring for keyboard
+ * navigation only. !important is deliberate — it must beat those component
+ * `outline: none` declarations, and only applies to :focus-visible.
+ */
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #58a6ff !important;
+  outline-offset: 2px;
+}
+
+input[type="range"]:focus-visible {
+  outline-offset: 4px;
+}

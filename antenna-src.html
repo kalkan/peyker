@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="theme-color" content="#0d1117" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anten Takip 3B</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+</head>
+<body>
+  <div id="antenna-app"></div>
+  <script type="module" src="/src/antenna.js"></script>
+</body>
+</html>

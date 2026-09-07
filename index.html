@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="theme-color" content="#0d1117" />
+  <link rel="manifest" href="./assets/manifest-Cxs7ixu9.webmanifest" />
+  <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Satellite Ground Track Planner</title>
+  <link rel="icon" href="./assets/icon-BdyZp2PQ.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon-CRht5X7y.png" />
+  <script type="module" crossorigin src="./assets/dev-BFVEpy5b.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/a11y-lyHZvV_S.js">
+  <link rel="modulepreload" crossorigin href="./assets/marker-shadow-JHf77l30.js">
+  <link rel="modulepreload" crossorigin href="./assets/keyboard-shortcuts-BGKY8zV2.js">
+  <link rel="modulepreload" crossorigin href="./assets/fetch-Boi2T_jM.js">
+  <link rel="modulepreload" crossorigin href="./assets/sun-DyPdGXFG.js">
+  <link rel="modulepreload" crossorigin href="./assets/sgp4-worker-client-D3la_3wg.js">
+  <link rel="modulepreload" crossorigin href="./assets/idb-cache-BBjhzktr.js">
+  <link rel="stylesheet" crossorigin href="./assets/a11y-DDG4zVyT.css">
+  <link rel="stylesheet" crossorigin href="./assets/marker-shadow-CIGW-MKW.css">
+  <link rel="stylesheet" crossorigin href="./assets/keyboard-shortcuts-DgUkyq4z.css">
+  <link rel="stylesheet" crossorigin href="./assets/dev-DXEs8TBx.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar"></aside>
+    <main id="map-container">
+      <div id="pass-countdown-overlay"></div>
+      <div id="map-search">
+        <input type="text" id="map-search-input" placeholder="Konum ara..." autocomplete="off" />
+        <div id="map-search-results"></div>
+      </div>
+      <div id="map"></div>
+      <div id="coords-display"></div>
+    </main>
+    <aside id="right-panel"></aside>
+  </div>
+</body>
+</html>
